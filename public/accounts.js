@@ -64,7 +64,7 @@ function bindLogin(teacher){
  };
 }
 function bindCatalog(){
- $('#catalog-search').oninput=e=>{catalogSearch=e.target.value;const pos=e.target.selectionStart;render();$('#catalog-search').focus();try{$('#catalog-search').setSelectionRange(pos,pos)}catch{}};
+ bindComposingSearch($('#catalog-search'),value=>catalogSearch=value);
  for(const [id,key] of [['book-filter','book'],['subject-filter','subject'],['unit-filter','unit']]){
   $('#'+id).onchange=e=>{if(key==='book')bookFilter=e.target.value;if(key==='subject')subjectFilter=e.target.value;if(key==='unit')unitFilter=e.target.value;render()};
  }

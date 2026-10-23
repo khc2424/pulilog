@@ -64,7 +64,7 @@ function readTimelineRows(){return [...document.querySelectorAll('.timeline-edit
 document.addEventListener('input',e=>{if(e.target.closest('.timeline-edit-row')&&selectedCourseId){try{timelineDrafts[selectedCourseId]=readTimelineRows();$('#timeline-save-status').textContent='변경사항이 있어요. 임시 저장하거나 학생에게 반영해주세요.'}catch{}}});
 function bindTeacherPage(){
  if(studentMode||!teacherAuthorized)return;
- for(const [id,update]of [['teacher-course-search',v=>teacherCourseSearch=v],['teacher-student-search',v=>teacherStudentSearch=v]]){const input=$('#'+id);if(input)input.oninput=e=>{const pos=e.target.selectionStart;update(e.target.value);render();$('#'+id).focus();$('#'+id).setSelectionRange(pos,pos)}}
+ for(const [id,update]of [['teacher-course-search',v=>teacherCourseSearch=v],['teacher-student-search',v=>teacherStudentSearch=v]]){const input=$('#'+id);if(input)bindComposingSearch(input,update)}
  if($('#course-note-form'))$('#course-note-form').onsubmit=async e=>{e.preventDefault();try{await requestAPI('/api/teacher/note',{id:selectedCourseId,notes:$('#teacher-note').value,supplement_needed:$('#teacher-supplement').checked});await refreshTeacher();render();toast('선생님 전용 기록을 저장했어요.')}catch(error){toast(error.message)}};
  if($('#teacher-channel-form'))$('#teacher-channel-form').onsubmit=async e=>{e.preventDefault();try{await requestAPI('/api/teacher/settings',{channel_url:$('#teacher-channel').value});await refreshTeacher();toast('주소를 저장했어요. 실제 유튜브 연결은 아직 전이에요.')}catch(error){$('#teacher-channel-error').textContent=error.message}};
 }
