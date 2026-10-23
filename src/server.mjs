@@ -5,6 +5,7 @@ import { resolve,dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from './config.mjs';
 import { LocalStore,SupabaseStore,StoreError } from './store.mjs';
+import { normalizeSchedule } from './schedules.mjs';
 
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'../public');
 const assets=new Map([['/','index.html'],...['index.html','app.js','accounts.js','teacher.js','workbench.js','production.js','style.css'].map(f=>['/'+f,f])]);
@@ -53,7 +54,7 @@ export function createApp(cfg,store){
    if(path==='/api/logout'||path==='/api/teacher/logout'){const role=path.includes('/teacher/')?'teacher':'student';const token=cookieToken(req,role);if(token)await store.del('sessions',{digest:hash(token)});return send(res,200,{ok:true},cookie(role,'',false,true))}
    if(path==='/api/favorite'){const s=await requireRole(req);check((await allowedVideos(s)).some(v=>v.id===d.video_id),'이 반에서 볼 수 없는 영상이에요.',404);const value={student_id:s.id,video_id:d.video_id};if(d.favorite===true)await store.put('favorites',value);else await store.del('favorites',value);return send(res,200,{favorite:d.favorite===true})}
    await requireRole(req,'teacher');
-   if(path==='/api/teacher/class'){const name=clean(d.name,60),schedule=d.schedule||'';check(name&&['','MWF','TTS','MW','TT'].includes(schedule));await store.put('classes',{name,schedule});return send(res,200,{ok:true})}
+   if(path==='/api/teacher/class'){const name=clean(d.name,60),schedule=normalizeSchedule(d);check(name&&schedule!==null,'반 이름과 선택한 수업 요일을 확인해주세요.');await store.put('classes',{name,schedule});return send(res,200,{ok:true})}
    if(path==='/api/teacher/student'){
     const id=d.id==null?null:Number(d.id);check(id===null||Number.isSafeInteger(id)&&id>0);const name=clean(d.name,60),class_name=clean(d.class_name,60);check(name&&class_name);check((await store.all('classes',{name:class_name})).length,'반을 먼저 등록해주세요.');if(id!==null)check((await store.all('students',{id})).length,'학생을 찾을 수 없어요.',404);
     const student=await store.saveStudent({...(id===null?{}:{id}),name,phone:phone(d.phone),class_name,active:d.active!==false});return send(res,200,{ok:true,id:student.id});

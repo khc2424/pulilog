@@ -36,6 +36,14 @@ test('학생·반·영상·타임라인·권한 통합 흐름',async t=>{
   for(const [name,schedule]of [['A반','MWF'],['B반','TTS'],['C반','MW'],['D반','TT']])assert.equal((await call('/api/teacher/class',{name,schedule},teacher)).status,200);
   const groups=(await call('/api/teacher/state',undefined,teacher)).body.class_info;
   assert.deepEqual(groups.map(g=>g.schedule).sort(),['MW','MWF','TT','TTS']);
+  assert.equal((await call('/api/teacher/class',{name:'주말반',days:[7,6]},teacher)).status,200);
+  assert.equal((await call('/api/teacher/state',undefined,teacher)).body.class_info.find(g=>g.name==='주말반').schedule,'days:6,7');
+  assert.equal((await call('/api/teacher/class',{name:'A반',days:[5,1,3]},teacher)).status,200);
+  assert.equal((await call('/api/teacher/state',undefined,teacher)).body.class_info.find(g=>g.name==='A반').schedule,'MWF');
+  assert.equal((await call('/api/teacher/class',{name:'매일반',days:[1,2,3,4,5,6,7]},teacher)).status,200);
+  assert.equal((await call('/api/teacher/class',{name:'미정반',days:[]},teacher)).status,200);
+  assert.equal((await call('/api/teacher/class',{name:'잘못된 요일',days:[1,8]},teacher)).status,400);
+  assert.equal((await call('/api/teacher/class',{name:'잘못된 형식',days:'월수'},teacher)).status,400);
   assert.equal((await call('/api/teacher/class',{name:'잘못된 요일',schedule:'FRIDAY'},teacher)).status,400);
   const r=await call('/api/teacher/student',{name:'가온',phone:'01011112222',class_name:'A반'},teacher);assert.equal(r.status,200);sid=r.body.id;
   assert.equal((await call('/api/teacher/student',{name:'나래',phone:'01033334444',class_name:'B반'},teacher)).status,200);
