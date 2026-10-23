@@ -3,6 +3,52 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
 
+test('반·학생 이름·전화번호 검색으로 실제 표시 목록이 줄어든다', async () => {
+  const source = await readFile(new URL('../public/workbench.js', import.meta.url), 'utf8');
+  const view = source.slice(source.indexOf('function teacherGroups(){'), source.indexOf('function refreshStudentSearchResults(){'));
+  const context = {
+    teacherStudentSearch: '', openClassGroups: new Set(),
+    managedData: { classes: ['고1B2', '중3D4'], videos: [], students: [
+      { id: 1, name: '김테스트', phone: '01011112222', class_name: '고1B2', active: true },
+      { id: 2, name: '박예시', phone: '01033334444', class_name: '중3D4', active: true }
+    ] },
+    heading: () => '', esc: String, badge: String, scheduleText: () => '', groupSchedule: () => '', videoGroups: () => []
+  };
+  runInNewContext(view, context);
+  for (const query of ['김', '2222', '고1']) {
+    context.teacherStudentSearch = query;
+    const html = context.teacherGroups();
+    assert.ok(html.includes('김테스트'));
+    assert.ok(!html.includes('박예시'));
+    assert.ok(html.includes('open'));
+  }
+  context.teacherStudentSearch = '없는이름';
+  assert.ok(context.teacherGroups().includes('검색 결과가 없어요'));
+  context.teacherStudentSearch = '';
+  assert.ok(context.teacherGroups().includes('박예시'));
+});
+
+test('학생 검색은 한글 조합 도중에도 입력창을 유지하며 결과만 갱신한다', async () => {
+  const source = await readFile(new URL('../public/search.js', import.meta.url), 'utf8');
+  let query = '', refreshed = 0;
+  const context = { render() { assert.fail('입력창을 포함한 전체 화면을 교체하면 안 된다'); } };
+  runInNewContext(source, context);
+  const input = { value: '' };
+  context.bindComposingSearch(input, value => { query = value; }, () => { refreshed++; });
+  input.oncompositionstart();
+  for (const value of ['ㄱ', '기', '김']) {
+    input.value = value;
+    input.oninput({ isComposing: true });
+    assert.equal(query, value);
+  }
+  assert.equal(refreshed, 3);
+  input.oncompositionend();
+  assert.equal(query, '김');
+  input.value = '';
+  input.oninput({ isComposing: false });
+  assert.equal(query, '');
+});
+
 test('한글 조합 중에는 검색 화면을 교체하지 않고 완성 후 검색한다', async () => {
   const source = await readFile(new URL('../public/search.js', import.meta.url), 'utf8');
   let renders = 0, query = '', focused = false, selection;
