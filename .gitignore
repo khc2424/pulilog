@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+.private/
+node_modules/
+coverage/
+*.log
+*.sqlite*
+*.jpg
+*.png
+.DS_Store

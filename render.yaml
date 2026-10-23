@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: pulilog
+    runtime: node
+    buildCommand: npm ci && npm run check && npm test
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_DRIVER
+        value: supabase
+      - key: APP_ORIGIN
+        sync: false
+      - key: SUPABASE_URL
+        value: https://jirvatkaxytdyxvqaegk.supabase.co
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: ADMIN_CODE
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: TRUST_PROXY
+        value: "true"
