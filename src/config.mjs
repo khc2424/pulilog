@@ -3,11 +3,12 @@ import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 export function config(env=process.env){
  const production=env.NODE_ENV==='production',port=Number(env.PORT||8766);
- const origin=new URL(env.APP_ORIGIN||`http://127.0.0.1:${port}`).origin;
+ const configuredOrigin=env.APP_ORIGIN||env.RENDER_EXTERNAL_URL;
+ const origin=new URL(configuredOrigin||`http://127.0.0.1:${port}`).origin;
  const driver=env.DATABASE_DRIVER||'sqlite';
  let adminCode=env.ADMIN_CODE||'',sessionSecret=env.SESSION_SECRET||'';
  if(production){
-  if(!env.APP_ORIGIN||!origin.startsWith('https://'))throw new Error('APP_ORIGIN must be the HTTPS production origin.');
+  if(!configuredOrigin||!origin.startsWith('https://'))throw new Error('APP_ORIGIN or RENDER_EXTERNAL_URL must be the HTTPS production origin.');
   if(driver!=='supabase'||!env.SUPABASE_URL||!env.SUPABASE_SECRET_KEY)throw new Error('Production requires a configured Supabase project.');
   if(!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(env.SUPABASE_URL))throw new Error('Invalid Supabase project URL.');
   if(adminCode.length<12||sessionSecret.length<32)throw new Error('Set a 12+ character ADMIN_CODE and a 32+ character SESSION_SECRET.');

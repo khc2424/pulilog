@@ -40,7 +40,7 @@ npm start
 |---|---|
 | `NODE_ENV` | `production` |
 | `DATABASE_DRIVER` | `supabase` |
-| `APP_ORIGIN` | 실제 HTTPS 사이트 주소. 경로 없이 입력 |
+| `APP_ORIGIN` | Render에서는 입력 불필요. 자동 제공 주소 사용. 커스텀 도메인 적용 시 HTTPS 주소를 경로 없이 입력 |
 | `SUPABASE_URL` | Supabase 프로젝트 URL |
 | `SUPABASE_SECRET_KEY` | 해당 프로젝트 서버 전용 secret key (`sb_secret_...`) |
 | `ADMIN_CODE` | 운영용 선생님 접속 코드, 12자 이상 |

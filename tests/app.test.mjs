@@ -10,6 +10,13 @@ test('운영 준비 설정은 빈 비밀 값이나 로컬 DB로 실행되지 않
  assert.equal(config({NODE_ENV:'production',APP_ORIGIN:'https://example.com',DATABASE_DRIVER:'supabase',SUPABASE_URL:'https://example.supabase.co',SUPABASE_SECRET_KEY:'sb_secret_test',ADMIN_CODE:'long-local-test-code',SESSION_SECRET:'s'.repeat(32)}).production,true);
 });
 
+test('Render 배포 주소 자동 적용과 직접 지정한 주소 우선 적용',()=>{
+ const base={NODE_ENV:'production',DATABASE_DRIVER:'supabase',SUPABASE_URL:'https://example.supabase.co',SUPABASE_SECRET_KEY:'sb_secret_test',ADMIN_CODE:'long-local-test-code',SESSION_SECRET:'s'.repeat(32),RENDER_EXTERNAL_URL:'https://pulilog-example.onrender.com'};
+ assert.equal(config(base).origin,'https://pulilog-example.onrender.com');
+ assert.equal(config({...base,APP_ORIGIN:'https://class.example.com'}).origin,'https://class.example.com');
+ assert.throws(()=>config({...base,RENDER_EXTERNAL_URL:'http://example.com'}));
+});
+
 test('학생·반·영상·타임라인·권한 통합 흐름',async t=>{
  const store=new LocalStore(':memory:');const cfg={origin:'http://127.0.0.1',production:false,adminCode:'2424',sessionSecret:'test-secret',driver:'sqlite',trustProxy:false};const app=createApp(cfg,store);
  await new Promise(r=>app.listen(0,'127.0.0.1',r));cfg.origin=`http://127.0.0.1:${app.address().port}`;
