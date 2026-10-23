@@ -11,7 +11,7 @@ export function config(env=process.env){
   if(!configuredOrigin||!origin.startsWith('https://'))throw new Error('APP_ORIGIN or RENDER_EXTERNAL_URL must be the HTTPS production origin.');
   if(driver!=='supabase'||!env.SUPABASE_URL||!env.SUPABASE_SECRET_KEY)throw new Error('Production requires a configured Supabase project.');
   if(!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(env.SUPABASE_URL))throw new Error('Invalid Supabase project URL.');
-  if(adminCode.length<12||sessionSecret.length<32)throw new Error('Set a 12+ character ADMIN_CODE and a 32+ character SESSION_SECRET.');
+  if(adminCode.length<4||sessionSecret.length<32)throw new Error('Set a 4+ character ADMIN_CODE and a 32+ character SESSION_SECRET.');
  }else{
   adminCode ||= '2424';
   if(!sessionSecret){const dir=resolve('.private');mkdirSync(dir,{recursive:true});const file=resolve(dir,'session-secret');if(!existsSync(file))writeFileSync(file,randomBytes(32).toString('hex'),{mode:0o600});sessionSecret=readFileSync(file,'utf8').trim()}

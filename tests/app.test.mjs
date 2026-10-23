@@ -6,7 +6,8 @@ import {config} from '../src/config.mjs';
 
 test('운영 준비 설정은 빈 비밀 값이나 로컬 DB로 실행되지 않는다',()=>{
  assert.throws(()=>config({NODE_ENV:'production'}));
- assert.throws(()=>config({NODE_ENV:'production',APP_ORIGIN:'https://example.com',DATABASE_DRIVER:'supabase',SUPABASE_URL:'https://example.supabase.co',SUPABASE_SECRET_KEY:'sb_secret_test',ADMIN_CODE:'2424',SESSION_SECRET:'s'.repeat(32)}));
+ assert.throws(()=>config({NODE_ENV:'production',APP_ORIGIN:'https://example.com',DATABASE_DRIVER:'supabase',SUPABASE_URL:'https://example.supabase.co',SUPABASE_SECRET_KEY:'sb_secret_test',ADMIN_CODE:'242',SESSION_SECRET:'s'.repeat(32)}));
+ assert.equal(config({NODE_ENV:'production',APP_ORIGIN:'https://example.com',DATABASE_DRIVER:'supabase',SUPABASE_URL:'https://example.supabase.co',SUPABASE_SECRET_KEY:'sb_secret_test',ADMIN_CODE:'2424',SESSION_SECRET:'s'.repeat(32)}).adminCode,'2424');
  assert.equal(config({NODE_ENV:'production',APP_ORIGIN:'https://example.com',DATABASE_DRIVER:'supabase',SUPABASE_URL:'https://example.supabase.co',SUPABASE_SECRET_KEY:'sb_secret_test',ADMIN_CODE:'long-local-test-code',SESSION_SECRET:'s'.repeat(32)}).production,true);
 });
 

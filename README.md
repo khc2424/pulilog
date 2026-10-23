@@ -24,7 +24,7 @@ npm start
 
 - 선생님: http://127.0.0.1:8766/#overview
 - 학생: http://127.0.0.1:8766/#student
-- 개발 전용 접속 코드: `2424`. 운영에서는 환경 변수로 12자 이상의 별도 코드를 설정합니다.
+- 로컬 접속 코드: `2424`. 운영에서도 사용자 요청에 따라 4자 이상 코드를 허용합니다. 운영 코드는 환경 변수 `ADMIN_CODE`에 직접 설정하며, 소스에는 저장하지 않습니다.
 - 먼저 반을 등록하고, 해당 반 학생과 영상 링크를 추가합니다. 처음에는 비어 있습니다.
 - `.private/`의 로컬 데이터는 Git에서 제외되며 외부로 제공하지 않습니다. 기존 `clinic-demo` 데이터와 분리되어 있습니다.
 
@@ -43,7 +43,7 @@ npm start
 | `APP_ORIGIN` | Render에서는 입력 불필요. 자동 제공 주소 사용. 커스텀 도메인 적용 시 HTTPS 주소를 경로 없이 입력 |
 | `SUPABASE_URL` | Supabase 프로젝트 URL |
 | `SUPABASE_SECRET_KEY` | 해당 프로젝트 서버 전용 secret key (`sb_secret_...`) |
-| `ADMIN_CODE` | 운영용 선생님 접속 코드, 12자 이상 |
+| `ADMIN_CODE` | 운영용 선생님 접속 코드, 4자 이상. 긴 코드를 권장 |
 | `SESSION_SECRET` | 32자 이상 무작위 값. Render Blueprint에서는 자동 생성 |
 | `TRUST_PROXY` | Render의 프록시 뒤에서 실행할 때 `true` |
 
