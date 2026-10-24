@@ -158,6 +158,11 @@ test('유튜브 연결 API는 선생님 전용이고 비밀 설정은 응답에 
   assert.equal((await teacherPost('/api/teacher/videos/delete',{ids:['Default0001'],execute:true})).status,200);
   assert.equal((await store.all('videos')).length,3);
   assert.equal((await store.all('students')).length,1);
+  await store.saveVideo({id:'TempVideo01',title:'임시 삭제 특강',published:true},[]);
+  await store.put('settings',{key:'youtube_excluded_video_ids',value:['Default0001','TempVideo01']});
+  assert.equal((await teacherPost('/api/teacher/videos/delete',{ids:['TempVideo01'],execute:true,exclude_from_import:false})).status,200);
+  assert.deepEqual((await store.all('settings',{key:'youtube_excluded_video_ids'}))[0].value,['Default0001']);
+  assert.equal((await store.all('videos',{id:'TempVideo01'})).length,0);
   await store.put('classes',{name:'약논반',schedule:'TTS'});
   for(const [id,published]of [['AliasTest01',true],['AliasTest02',false]])await store.saveVideo({id,title:'NK 약술형논술 수학1',class_name:'',published,book:'',subject:'',unit:'',timeline:[['1',1,'개념','00:10',10]],notes:'유지할 메모'},[]);
   assert.equal((await (await teacherPost('/api/teacher/videos/apply-title-aliases',{})).json()).assign_count,2);

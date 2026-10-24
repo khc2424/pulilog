@@ -67,12 +67,12 @@ function editTeacherCourse(id=null){
 }
 function confirmTeacherVideoDelete(id){
  const video=teacherVideo(id);if(!video)return;
- openModal(`<h2 id="modal-title">영상을 삭제할까요?</h2><p><strong>${esc(video.title)}</strong></p><p class="source-note">배정 반: ${videoGroups(video).map(esc).join(' · ')||'미배정'}</p><p class="source-note">풀이로그의 영상·타임라인·즐겨찾기가 삭제돼요. 유튜브 원본은 유지되며, 다음 가져오기에서도 다시 등록되지 않아요.</p><p class="form-error" id="video-delete-error" role="alert"></p><div class="modal-actions"><button class="btn" id="video-delete-cancel">취소</button><button class="btn danger" id="video-delete-confirm">영상 삭제</button></div>`);
+ openModal(`<h2 id="modal-title">영상을 삭제할까요?</h2><p><strong>${esc(video.title)}</strong></p><p class="source-note">배정 반: ${videoGroups(video).map(esc).join(' · ')||'미배정'}</p><p class="source-note">풀이로그의 영상·타임라인·즐겨찾기가 삭제돼요. 유튜브 원본은 유지돼요. 아래 옵션을 해제하면 나중에 유튜브에서 다시 가져올 수 있어요.</p><label class="check-row"><input id="video-delete-exclude" type="checkbox" checked>다음 유튜브 가져오기에서도 제외</label><p class="form-error" id="video-delete-error" role="alert"></p><div class="modal-actions"><button class="btn" id="video-delete-cancel">취소</button><button class="btn danger" id="video-delete-confirm">영상 삭제</button></div>`);
  $('#video-delete-cancel').onclick=closeModal;
  $('#video-delete-confirm').onclick=async e=>{
   const button=e.currentTarget;button.disabled=true;$('#video-delete-cancel').disabled=true;
   try{
-   await requestAPI('/api/teacher/videos/delete',{ids:[id],execute:true});
+   await requestAPI('/api/teacher/videos/delete',{ids:[id],execute:true,exclude_from_import:$('#video-delete-exclude').checked});
    managedData.videos=managedData.videos.filter(v=>v.id!==id);delete timelineDrafts[id];if(selectedCourseId===id)selectedCourseId=null;
    let refreshed=true;try{await refreshTeacher()}catch{refreshed=false}
    closeModal();render();toast(refreshed?'영상을 삭제했어요.':'삭제했어요. 최신 목록은 새로고침해주세요.');

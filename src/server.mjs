@@ -76,7 +76,8 @@ export function createApp(cfg,store,options={}){
     const ids=[...new Set(d.ids)],known=new Set((await store.all('videos')).map(v=>v.id));check(ids.every(id=>known.has(id)),'영상 목록을 다시 확인해주세요.');
     if(d.execute!==true)return send(res,200,{delete_count:ids.length,ids});
     const exclusions=(await store.all('settings',{key:'youtube_excluded_video_ids'}))[0]?.value||[];
-    await store.put('settings',{key:'youtube_excluded_video_ids',value:[...new Set([...exclusions,...ids])]});
+    const nextExclusions=d.exclude_from_import===false?exclusions.filter(id=>!ids.includes(id)):[...new Set([...exclusions,...ids])];
+    await store.put('settings',{key:'youtube_excluded_video_ids',value:nextExclusions});
     await store.deleteVideos(ids);return send(res,200,{deleted:ids.length});
    }
    if(path==='/api/teacher/videos/visibility'){
