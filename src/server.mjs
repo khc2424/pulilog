@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { config } from './config.mjs';
 import { LocalStore,SupabaseStore,StoreError } from './store.mjs';
 import { normalizeSchedule } from './schedules.mjs';
-import { canonicalClassName,mergeClassAliases } from './classes.mjs';
+import { canonicalClassName,mergeClassAliases,titleClassAlias } from './classes.mjs';
 import { YouTubeConnection,publicSettings,youtubeYear } from './youtube.mjs';
 
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'../public');
@@ -64,6 +64,13 @@ export function createApp(cfg,store,options={}){
    if(path==='/api/logout'||path==='/api/teacher/logout'){const role=path.includes('/teacher/')?'teacher':'student';const token=cookieToken(req,role);if(token)await store.del('sessions',{digest:hash(token)});return send(res,200,{ok:true},cookie(role,'',false,true))}
    if(path==='/api/favorite'){const s=await requireRole(req);check((await allowedVideos(s)).some(v=>v.id===d.video_id),'이 반에서 볼 수 없는 영상이에요.',404);const value={student_id:s.id,video_id:d.video_id};if(d.favorite===true)await store.put('favorites',value);else await store.del('favorites',value);return send(res,200,{favorite:d.favorite===true})}
    const teacherSession=await requireRole(req,'teacher');
+   if(path==='/api/teacher/videos/apply-title-aliases'){
+    const registered=(await store.all('classes')).map(g=>g.name),relations=await store.all('video_classes');
+    const targets=(await store.all('videos')).map(video=>({video,alias:titleClassAlias(video.title,registered)})).filter(({video,alias})=>alias&&!relations.some(r=>r.video_id===video.id&&r.class_name===alias.name));
+    if(d.execute!==true)return send(res,200,{assign_count:targets.length,ids:targets.map(({video})=>video.id)});
+    for(const {video,alias} of targets){const groups=[...new Set([...relations.filter(r=>r.video_id===video.id).map(r=>r.class_name),alias.name])];await store.saveVideo({...video,class_name:video.class_name||alias.name},groups)}
+    return send(res,200,{updated:targets.length});
+   }
    if(path==='/api/teacher/videos/delete'){
     check(Array.isArray(d.ids)&&d.ids.length>0&&d.ids.length<=5000&&d.ids.every(id=>typeof id==='string'&&/^[A-Za-z0-9_-]{11}$/.test(id)));
     const ids=[...new Set(d.ids)],known=new Set((await store.all('videos')).map(v=>v.id));check(ids.every(id=>known.has(id)),'영상 목록을 다시 확인해주세요.');

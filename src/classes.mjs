@@ -1,4 +1,10 @@
 export const classKey=value=>String(value??'').replace(/\s/g,'').toUpperCase();
+export function titleClassAlias(title,registered){
+ const match=String(title).match(/NK\s*약술형\s*논술/i);
+ if(!match)return null;
+ const name=canonicalClassName('약논반',registered);
+ return registered.includes(name)?{name,rest:String(title).slice(match.index+match[0].length).replace(/^[\s\]:·-]+/,'')}:null;
+}
 export function canonicalClassName(value,registered){
  const key=classKey(value),matches=registered.filter(name=>classKey(name)===key);
  return matches.find(name=>name===key)||matches.sort((a,b)=>a.length-b.length||a.localeCompare(b))[0]||key;

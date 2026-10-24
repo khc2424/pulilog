@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 
-import { classKey,canonicalClassName } from './classes.mjs';
+import { classKey,canonicalClassName,titleClassAlias } from './classes.mjs';
 
 const scope='https://www.googleapis.com/auth/youtube.readonly';
 const digest=value=>createHash('sha256').update(value).digest('hex');
@@ -11,12 +11,13 @@ export const youtubeYear=value=>{const time=Date.parse(value);return Number.isFi
 export function classifyYouTubeTitle(title,classes){
  const compact=classKey;
  let group='',rest=title;
- for(const candidate of [...new Set(classes.map(name=>canonicalClassName(name,classes)))].sort((a,b)=>b.length-a.length)){
+ const alias=titleClassAlias(title,classes);if(alias){group=alias.name;rest=alias.rest}
+ if(!group)for(const candidate of [...new Set(classes.map(name=>canonicalClassName(name,classes)))].sort((a,b)=>b.length-a.length)){
   let end=0;while(end<title.length&&compact(title.slice(0,end)).length<compact(candidate).length)end++;
   if(compact(title.slice(0,end))===compact(candidate)&&(!title[end]||/\s/.test(title[end]))){group=candidate;rest=title.slice(end).trim();break}
  }
  if(!group)return {classes:[],class_name:'',book:'',subject:'',unit:''};
- const match=rest.match(/^(.+?)\s+(공통수학\s*[12]|대수|미적분\s*[12]?|확률과\s*통계|기하|수학\s*[ⅠⅡ12])\s*(.*)$/i);
+ const match=rest.match(/^(?:(.+?)\s+)?(공통수학\s*[12]|대수|미적분\s*[12]?|확률과\s*통계|기하|수학\s*[ⅠⅡ12])\s*(.*)$/i);
  return {classes:group?[group]:[],class_name:group||'',book:match?.[1]?.trim()||'',subject:match?.[2]?.replace(/\s/g,'')||'',unit:(match?.[3]||'').replace(/^\[[^\]]+\]\s*/,'').replace(/\s*#\s*\d+\s*$/,'').trim()};
 }
 

@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {classKey,canonicalClassName,mergeClassAliases} from '../src/classes.mjs';
+import {classKey,canonicalClassName,mergeClassAliases,titleClassAlias} from '../src/classes.mjs';
 import {LocalStore} from '../src/store.mjs';
 import {classifyYouTubeTitle} from '../src/youtube.mjs';
 
@@ -10,6 +10,16 @@ test('반 이름은 띄어쓰기·대소문자를 무시하고 기존 이름을 
  assert.equal(canonicalClassName('고1 b2',['고1B2']),'고1B2');
  assert.equal(canonicalClassName('중3 D4',['중3D5']),'중3D4');
  assert.equal(classifyYouTubeTitle('중3 d4 쎈 수학1 [1] 다항식 #1',['중3 D4','중3D4']).class_name,'중3D4');
+});
+
+test('NK 약술형논술은 띄어쓰기·대소문자·괄호와 무관하게 약논반으로 분류한다',()=>{
+ for(const title of ['NK 약술형논술 수능특강 수학1 [1] 지수와 로그','nk약술형논술 수능특강 수학1 [1] 지수와 로그','[NK 약술형논술] 수능특강 수학1 [1] 지수와 로그']){
+  const parsed=classifyYouTubeTitle(title,['약논반']);
+  assert.equal(parsed.class_name,'약논반');assert.equal(parsed.book,'수능특강');assert.equal(parsed.subject,'수학1');assert.equal(parsed.unit,'지수와 로그');
+ }
+ assert.equal(classifyYouTubeTitle('NK 약술형논술 수학1 [1] 지수와 로그',['약논반']).book,'');
+ assert.equal(classifyYouTubeTitle('NK 약술형논술 수학1 [1] 지수와 로그',['약논반']).subject,'수학1');
+ assert.equal(titleClassAlias('NK 약술형논술',[]),null);
 });
 
 test('같은 반 통합은 학생·영상·즐겨찾기·수업 요일을 유지하고 중복 배정만 합친다',async()=>{
