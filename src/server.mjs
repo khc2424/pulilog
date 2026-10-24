@@ -63,6 +63,16 @@ export function createApp(cfg,store,options={}){
    if(path==='/api/logout'||path==='/api/teacher/logout'){const role=path.includes('/teacher/')?'teacher':'student';const token=cookieToken(req,role);if(token)await store.del('sessions',{digest:hash(token)});return send(res,200,{ok:true},cookie(role,'',false,true))}
    if(path==='/api/favorite'){const s=await requireRole(req);check((await allowedVideos(s)).some(v=>v.id===d.video_id),'이 반에서 볼 수 없는 영상이에요.',404);const value={student_id:s.id,video_id:d.video_id};if(d.favorite===true)await store.put('favorites',value);else await store.del('favorites',value);return send(res,200,{favorite:d.favorite===true})}
    const teacherSession=await requireRole(req,'teacher');
+   if(path==='/api/teacher/videos/remove-outside-year'){
+    const year=d.keep_year;check(Number.isInteger(year)&&year>=2005&&year<=2100,'유지할 연도를 확인해주세요.');
+    const dates=(await store.all('settings',{key:'youtube_video_dates'}))[0]?.value||{};
+    const videos=await store.all('videos'),targets=videos.filter(v=>youtubeYear(dates[v.id])!==null&&youtubeYear(dates[v.id])!==year);
+    const unknown=videos.filter(v=>youtubeYear(dates[v.id])===null).length;
+    if(d.execute!==true)return send(res,200,{keep_year:year,delete_count:targets.length,unknown_date:unknown,ids:targets.map(v=>v.id)});
+    check(Array.isArray(d.ids)&&d.ids.length===targets.length&&new Set(d.ids).size===targets.length&&targets.every(v=>d.ids.includes(v.id)),'삭제 대상이 변경됐어요. 목록을 다시 확인해주세요.',409);
+    await store.deleteVideos(targets.map(v=>v.id));
+    return send(res,200,{deleted:targets.length,kept:videos.length-targets.length,unknown_date:unknown});
+   }
    if(path==='/api/teacher/youtube/connect'){const started=await youtube.start(teacherSession);return send(res,200,{url:started.url},oauthCookie(started.state))}
    if(path==='/api/teacher/youtube/sync')return send(res,200,await youtube.sync({year:d.year??2026}));
    if(path==='/api/teacher/youtube/disconnect')return send(res,200,await youtube.disconnect());
