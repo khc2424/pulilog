@@ -82,7 +82,7 @@ function parseCourseTitle(raw){
  const title=raw.trim();const m=title.match(/^(고\d|중\d|초\d)\s*([A-Za-z]\d+)\s+(.+?)\s+(공통수학\s*[12]|대수|미적분\s*[12]?|확률과\s*통계|기하|수학\s*[ⅠⅡ12])\s*(.*)$/i);
  if(!m)return null;
  const tail=m[5].trim(),unit=tail.replace(/^\[[^\]]+\]\s*/,'').replace(/\s*#\s*\d+\s*$/,'').trim();
- return{class_name:m[1]+' '+m[2].toUpperCase(),book:m[3].trim(),subject:m[4].replace(/\s/g,''),unit:unit||tail};
+ return{class_name:m[1]+m[2].toUpperCase(),book:m[3].trim(),subject:m[4].replace(/\s/g,''),unit:unit||tail};
 }
 function manageCourse(id=null){
  const v=managedData.videos.find(v=>v.id===id)||{id:'',title:'',class_name:'고1 B2',book:'',subject:'',unit:''};

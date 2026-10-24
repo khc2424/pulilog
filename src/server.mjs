@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { config } from './config.mjs';
 import { LocalStore,SupabaseStore,StoreError } from './store.mjs';
 import { normalizeSchedule } from './schedules.mjs';
+import { canonicalClassName,mergeClassAliases } from './classes.mjs';
 import { YouTubeConnection,publicSettings,youtubeYear } from './youtube.mjs';
 
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'../public');
@@ -89,13 +90,14 @@ export function createApp(cfg,store,options={}){
    if(path==='/api/teacher/youtube/connect'){const started=await youtube.start(teacherSession);return send(res,200,{url:started.url},oauthCookie(started.state))}
    if(path==='/api/teacher/youtube/sync')return send(res,200,await youtube.sync({year:d.year??2026}));
    if(path==='/api/teacher/youtube/disconnect')return send(res,200,await youtube.disconnect());
-   if(path==='/api/teacher/class'){const name=clean(d.name,60),schedule=normalizeSchedule(d);check(name&&schedule!==null,'반 이름과 선택한 수업 요일을 확인해주세요.');await store.put('classes',{name,schedule});return send(res,200,{ok:true})}
+   if(path==='/api/teacher/classes/merge-aliases')return send(res,200,await mergeClassAliases(store,clean(d.name,60)));
+   if(path==='/api/teacher/class'){const name=canonicalClassName(clean(d.name,60),(await store.all('classes')).map(g=>g.name)),schedule=normalizeSchedule(d);check(name&&schedule!==null,'반 이름과 선택한 수업 요일을 확인해주세요.');await store.put('classes',{name,schedule});return send(res,200,{ok:true})}
    if(path==='/api/teacher/student'){
-    const id=d.id==null?null:Number(d.id);check(id===null||Number.isSafeInteger(id)&&id>0);const name=clean(d.name,60),class_name=clean(d.class_name,60);check(name&&class_name);check((await store.all('classes',{name:class_name})).length,'반을 먼저 등록해주세요.');if(id!==null)check((await store.all('students',{id})).length,'학생을 찾을 수 없어요.',404);
+    const id=d.id==null?null:Number(d.id);check(id===null||Number.isSafeInteger(id)&&id>0);const name=clean(d.name,60),class_name=canonicalClassName(clean(d.class_name,60),(await store.all('classes')).map(g=>g.name));check(name&&class_name);check((await store.all('classes',{name:class_name})).length,'반을 먼저 등록해주세요.');if(id!==null)check((await store.all('students',{id})).length,'학생을 찾을 수 없어요.',404);
     const student=await store.saveStudent({...(id===null?{}:{id}),name,phone:phone(d.phone),class_name,active:d.active!==false});return send(res,200,{ok:true,id:student.id});
    }
    if(path==='/api/teacher/video'){
-    const id=clean(d.id,11);check(/^[A-Za-z0-9_-]{11}$/.test(id));const old=(await store.all('videos',{id}))[0];const raw=d.classes??[d.class_name];check(Array.isArray(raw)&&raw.length<=50);const classes=[...new Set(raw.map(g=>clean(g,60)).filter(Boolean))];
+    const id=clean(d.id,11);check(/^[A-Za-z0-9_-]{11}$/.test(id));const old=(await store.all('videos',{id}))[0];const raw=d.classes??[d.class_name];check(Array.isArray(raw)&&raw.length<=50);const registered=(await store.all('classes')).map(g=>g.name);const classes=[...new Set(raw.map(g=>canonicalClassName(clean(g,60),registered)).filter(Boolean))];
     const v={...(old||{id,added_at:Date.now()/1000,timeline:[],reviewed:false,timeline_draft:null,notes:'',supplement_needed:false}),title:clean(d.title),class_name:classes[0]||'',book:clean(d.book),subject:clean(d.subject),unit:clean(d.unit),published:d.published==null?(old?.published??true):(d.published===true||d.published===1)};check(v.title);await store.saveVideo(v,classes);return send(res,200,{ok:true});
    }
    if(path==='/api/teacher/timeline'||path==='/api/teacher/note'){

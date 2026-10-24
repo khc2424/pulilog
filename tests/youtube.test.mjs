@@ -138,7 +138,11 @@ test('유튜브 연결 API는 선생님 전용이고 비밀 설정은 응답에 
   const teacherPost=async(path,data)=>fetch(cfg.origin+path,{method:'POST',headers:{Cookie:cookie,'X-AXIS-Request':'1',Origin:cfg.origin,'Content-Type':'application/json'},body:JSON.stringify(data)});
   const visibility=await teacherPost('/api/teacher/videos/visibility',{ids:['Keep2026001','NoDate00001'],published:true});
   assert.equal(visibility.status,200);assert.ok((await store.all('videos')).every(v=>v.published));
-  for(const [id,classes]of [['Default0001',[]],['Default0002',['테스트반']]])assert.equal((await teacherPost('/api/teacher/video',{id,title:'분류 전 새 강의',classes})).status,200);
+  for(const [id,classes]of [['Default0001',[]],['Default0002',['테스트 반','테스트반']]])assert.equal((await teacherPost('/api/teacher/video',{id,title:'분류 전 새 강의',classes})).status,200);
+  assert.equal((await store.all('classes')).length,1);
+  assert.equal((await store.all('video_classes',{video_id:'Default0002'})).length,1);
+  assert.equal((await teacherPost('/api/teacher/student',{id:1,name:'학생',phone:'01011112222',class_name:'테스트 반',active:true})).status,200);
+  assert.equal((await store.all('students'))[0].class_name,'테스트반');
   assert.ok((await store.all('videos')).every(v=>v.published));
   const student=await teacherPost('/api/login',{phone:'01011112222'});
   const studentCookie=student.headers.get('set-cookie');

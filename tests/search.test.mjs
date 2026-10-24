@@ -44,7 +44,7 @@ test('반·학생 이름·전화번호 검색으로 실제 표시 목록이 줄�
     heading: () => '', esc: String, badge: String, scheduleText: () => '', groupSchedule: () => '', videoGroups: () => []
   };
   runInNewContext(view, context);
-  for (const query of ['김', '2222', '고1']) {
+  for (const query of ['김', '2222', '고1', '고 1']) {
     context.teacherStudentSearch = query;
     const html = context.teacherGroups();
     assert.ok(html.includes('김테스트'));

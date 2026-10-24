@@ -1,5 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 
+import { classKey,canonicalClassName } from './classes.mjs';
+
 const scope='https://www.googleapis.com/auth/youtube.readonly';
 const digest=value=>createHash('sha256').update(value).digest('hex');
 const fail=message=>{throw Object.assign(new Error(message),{status:400})};
@@ -7,9 +9,9 @@ export const publicSettings=rows=>Object.fromEntries(rows.filter(r=>!r.key.start
 export const youtubeYear=value=>{const time=Date.parse(value);return Number.isFinite(time)?new Date(time+9*3600000).getUTCFullYear():null};
 
 export function classifyYouTubeTitle(title,classes){
- const compact=s=>s.replace(/\s/g,'').toLowerCase();
+ const compact=classKey;
  let group='',rest=title;
- for(const candidate of [...classes].sort((a,b)=>b.length-a.length)){
+ for(const candidate of [...new Set(classes.map(name=>canonicalClassName(name,classes)))].sort((a,b)=>b.length-a.length)){
   let end=0;while(end<title.length&&compact(title.slice(0,end)).length<compact(candidate).length)end++;
   if(compact(title.slice(0,end))===compact(candidate)&&(!title[end]||/\s/.test(title[end]))){group=candidate;rest=title.slice(end).trim();break}
  }
