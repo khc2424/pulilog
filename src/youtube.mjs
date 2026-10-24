@@ -12,6 +12,7 @@ export function classifyYouTubeTitle(title,classes){
   let end=0;while(end<title.length&&compact(title.slice(0,end)).length<compact(candidate).length)end++;
   if(compact(title.slice(0,end))===compact(candidate)&&(!title[end]||/\s/.test(title[end]))){group=candidate;rest=title.slice(end).trim();break}
  }
+ if(!group)return {classes:[],class_name:'',book:'',subject:'',unit:''};
  const match=rest.match(/^(.+?)\s+(공통수학\s*[12]|대수|미적분\s*[12]?|확률과\s*통계|기하|수학\s*[ⅠⅡ12])\s*(.*)$/i);
  return {classes:group?[group]:[],class_name:group||'',book:match?.[1]?.trim()||'',subject:match?.[2]?.replace(/\s/g,'')||'',unit:(match?.[3]||'').replace(/^\[[^\]]+\]\s*/,'').replace(/\s*#\s*\d+\s*$/,'').trim()};
 }
@@ -67,7 +68,9 @@ export class YouTubeConnection {
   for(const row of await this.store.all('settings'))if(row.key.startsWith('youtube_state_'))await this.store.del('settings',{key:row.key});
   return {revoked};
  }
- async sync(){
+ async sync({year=2026}={}){
+  if(!Number.isInteger(year)||year<2005||year>2100)fail('가져올 연도를 확인해주세요.');
+  const start=Date.parse(`${year}-01-01T00:00:00+09:00`),end=Date.parse(`${year+1}-01-01T00:00:00+09:00`);
   if(this.busy)fail('영상 가져오기가 진행 중이에요. 잠시 후 확인해주세요.');this.busy=true;
   try{
    const data=await this.read();if(!data)fail('Google 계정을 먼저 연결해주세요.');const access=await this.access(data);
@@ -79,17 +82,22 @@ export class YouTubeConnection {
    }
    if(pageToken)fail('영상이 5,000개를 넘어 분할 가져오기가 필요해요.');
    const existing=new Set((await this.store.all('videos')).map(v=>v.id));const classes=(await this.store.all('classes')).map(c=>c.name);
-   let imported=0,skipped=0;const list=[...ids];
+   let imported=0,skipped=0,outside_year=0,unknown_date=0,unassigned=0,needs_review=0;const list=[...ids];
    for(let i=0;i<list.length;i+=50){
     const batch=await this.api('videos',{part:'snippet,status',id:list.slice(i,i+50).join(','),maxResults:'50'},access);
     for(const item of batch.items||[]){
+     const publishedAt=Date.parse(item.snippet?.publishedAt);
+     if(!Number.isFinite(publishedAt)){unknown_date++;continue}
+     if(publishedAt<start||publishedAt>=end){outside_year++;continue}
      if(existing.has(item.id)||item.snippet?.channelId!==data.channel.id||!['public','unlisted'].includes(item.status?.privacyStatus)||!item.status?.embeddable){skipped++;continue}
      const title=String(item.snippet.title).slice(0,300),parsed=classifyYouTubeTitle(title,classes);
      await this.store.saveVideo({id:item.id,title,...parsed,added_at:Date.now()/1000,timeline:[],timeline_draft:null,reviewed:false,published:false,notes:'',supplement_needed:false},parsed.classes);
      existing.add(item.id);imported++;
+     if(!parsed.classes.length)unassigned++;
+     if(!parsed.classes.length||!parsed.book||!parsed.subject||!parsed.unit)needs_review++;
     }
    }
-   data.last_sync=new Date().toISOString();await this.save(data);return {imported,skipped};
+   data.last_sync=new Date().toISOString();await this.save(data);return {year,imported,skipped,outside_year,unknown_date,unassigned,needs_review};
   }finally{this.busy=false}
  }
 }

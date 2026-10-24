@@ -63,7 +63,7 @@ export function createApp(cfg,store,options={}){
    if(path==='/api/favorite'){const s=await requireRole(req);check((await allowedVideos(s)).some(v=>v.id===d.video_id),'이 반에서 볼 수 없는 영상이에요.',404);const value={student_id:s.id,video_id:d.video_id};if(d.favorite===true)await store.put('favorites',value);else await store.del('favorites',value);return send(res,200,{favorite:d.favorite===true})}
    const teacherSession=await requireRole(req,'teacher');
    if(path==='/api/teacher/youtube/connect'){const started=await youtube.start(teacherSession);return send(res,200,{url:started.url},oauthCookie(started.state))}
-   if(path==='/api/teacher/youtube/sync')return send(res,200,await youtube.sync());
+   if(path==='/api/teacher/youtube/sync')return send(res,200,await youtube.sync({year:d.year??2026}));
    if(path==='/api/teacher/youtube/disconnect')return send(res,200,await youtube.disconnect());
    if(path==='/api/teacher/class'){const name=clean(d.name,60),schedule=normalizeSchedule(d);check(name&&schedule!==null,'반 이름과 선택한 수업 요일을 확인해주세요.');await store.put('classes',{name,schedule});return send(res,200,{ok:true})}
    if(path==='/api/teacher/student'){
