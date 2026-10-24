@@ -83,6 +83,7 @@ export class YouTubeConnection {
    }
    if(pageToken)fail('영상이 5,000개를 넘어 분할 가져오기가 필요해요.');
    const existing=new Set((await this.store.all('videos')).map(v=>v.id));const classes=(await this.store.all('classes')).map(c=>c.name);
+   const excluded=new Set((await this.store.all('settings',{key:'youtube_excluded_video_ids'}))[0]?.value||[]);
    const dates={...((await this.store.all('settings',{key:'youtube_video_dates'}))[0]?.value||{})};
    let imported=0,skipped=0,outside_year=0,unknown_date=0,unassigned=0,needs_review=0;const list=[...ids];
    for(let i=0;i<list.length;i+=50){
@@ -92,7 +93,7 @@ export class YouTubeConnection {
      if(Number.isFinite(publishedAt))dates[item.id]=item.snippet.publishedAt;
      if(!Number.isFinite(publishedAt)){unknown_date++;continue}
      if(publishedAt<start||publishedAt>=end){outside_year++;continue}
-     if(existing.has(item.id)||item.snippet?.channelId!==data.channel.id||!['public','unlisted'].includes(item.status?.privacyStatus)||!item.status?.embeddable){skipped++;continue}
+     if(existing.has(item.id)||excluded.has(item.id)||item.snippet?.channelId!==data.channel.id||!['public','unlisted'].includes(item.status?.privacyStatus)||!item.status?.embeddable){skipped++;continue}
      const title=String(item.snippet.title).slice(0,300),parsed=classifyYouTubeTitle(title,classes);
      await this.store.saveVideo({id:item.id,title,...parsed,added_at:Date.now()/1000,timeline:[],timeline_draft:null,reviewed:false,published:true,notes:'',supplement_needed:false},parsed.classes);
      existing.add(item.id);imported++;

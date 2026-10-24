@@ -103,6 +103,10 @@ test('1,000개 업로드를 페이지 순서와 무관하게 2026년만 가져�
   assert.equal(youtubeYear(dates[items[2].id]),2027);
   assert.equal(youtubeYear(dates[items[3].id]),2025);
   assert.equal((await yt.sync()).imported,0);
+  await store.put('settings',{key:'youtube_excluded_video_ids',value:[items[0].id]});
+  await store.deleteVideos([items[0].id]);
+  assert.equal((await yt.sync()).imported,0);
+  assert.equal((await store.all('videos')).length,3);
   await assert.rejects(yt.sync({year:'2026'}));
  }finally{store.close()}
 });
@@ -144,6 +148,12 @@ test('유튜브 연결 API는 선생님 전용이고 비밀 설정은 응답에 
   await teacherPost('/api/teacher/videos/visibility',{ids:['Default0002'],published:false});
   const afterHide=await (await fetch(cfg.origin+'/api/videos',{headers:{Cookie:studentCookie}})).json();
   assert.ok(!afterHide.videos.some(v=>v.id==='Default0002'));
+  const deletePreview=await teacherPost('/api/teacher/videos/delete',{ids:['Default0001']});
+  assert.equal((await deletePreview.json()).delete_count,1);assert.equal((await store.all('videos')).length,4);
+  assert.equal((await teacherPost('/api/teacher/videos/delete',{ids:['Nonexistent'],execute:true})).status,400);
+  assert.equal((await teacherPost('/api/teacher/videos/delete',{ids:['Default0001'],execute:true})).status,200);
+  assert.equal((await store.all('videos')).length,3);
+  assert.equal((await store.all('students')).length,1);
   await store.put('settings',{key:'youtube_state_private',value:'secret-ciphertext'});
   const state=await (await fetch(cfg.origin+'/api/teacher/state',{headers:{Cookie:cookie}})).json();
   assert.deepEqual(state.settings,{});assert.equal(state.youtube.configured,false);

@@ -63,6 +63,14 @@ export function createApp(cfg,store,options={}){
    if(path==='/api/logout'||path==='/api/teacher/logout'){const role=path.includes('/teacher/')?'teacher':'student';const token=cookieToken(req,role);if(token)await store.del('sessions',{digest:hash(token)});return send(res,200,{ok:true},cookie(role,'',false,true))}
    if(path==='/api/favorite'){const s=await requireRole(req);check((await allowedVideos(s)).some(v=>v.id===d.video_id),'이 반에서 볼 수 없는 영상이에요.',404);const value={student_id:s.id,video_id:d.video_id};if(d.favorite===true)await store.put('favorites',value);else await store.del('favorites',value);return send(res,200,{favorite:d.favorite===true})}
    const teacherSession=await requireRole(req,'teacher');
+   if(path==='/api/teacher/videos/delete'){
+    check(Array.isArray(d.ids)&&d.ids.length>0&&d.ids.length<=5000&&d.ids.every(id=>typeof id==='string'&&/^[A-Za-z0-9_-]{11}$/.test(id)));
+    const ids=[...new Set(d.ids)],known=new Set((await store.all('videos')).map(v=>v.id));check(ids.every(id=>known.has(id)),'영상 목록을 다시 확인해주세요.');
+    if(d.execute!==true)return send(res,200,{delete_count:ids.length,ids});
+    const exclusions=(await store.all('settings',{key:'youtube_excluded_video_ids'}))[0]?.value||[];
+    await store.put('settings',{key:'youtube_excluded_video_ids',value:[...new Set([...exclusions,...ids])]});
+    await store.deleteVideos(ids);return send(res,200,{deleted:ids.length});
+   }
    if(path==='/api/teacher/videos/visibility'){
     check(Array.isArray(d.ids)&&d.ids.length<=5000&&d.ids.every(id=>typeof id==='string'&&/^[A-Za-z0-9_-]{11}$/.test(id))&&typeof d.published==='boolean');
     const ids=[...new Set(d.ids)],known=new Set((await store.all('videos')).map(v=>v.id));check(ids.every(id=>known.has(id)),'영상 목록을 다시 확인해주세요.');
