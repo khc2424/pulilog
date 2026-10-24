@@ -6,7 +6,7 @@ import { runInNewContext } from 'node:vm';
 test('강의 관리에서 2026년을 기본 표시하고 전체·날짜 미확인으로 전환한다',async()=>{
  const source=await readFile(new URL('../public/teacher.js',import.meta.url),'utf8');
  const view=source.slice(source.indexOf('function teacherCourses(){'),source.indexOf('function teacherCourseDetail('));
- const context={page:'courses',teacherCourseClass:'',selectedCourseId:null,teacherCourseSearch:'',teacherCourseFilter:'all',teacherCourseYear:null,normalizeSearch:s=>s,heading:()=>'',esc:String,videoGroups:()=>[],badge:String,tlabel:()=>'',classificationMissing:()=>false,
+ const context={page:'courses',teacherCourseClasses:new Set(),teacherCourseMissing:new Set(),selectedCourseId:null,teacherCourseSearch:'',teacherCourseFilter:'all',teacherCourseYear:null,normalizeSearch:s=>s,heading:()=>'',esc:String,videoGroups:()=>[],badge:String,tlabel:()=>'',classificationMissing:()=>false,
   managedData:{videos:[
    {id:'a',title:'올해영상',youtube_year:2026,timeline:[]},
    {id:'b',title:'지난영상',youtube_year:2025,timeline:[]},
@@ -27,9 +27,19 @@ test('강의 관리에서 2026년을 기본 표시하고 전체·날짜 미확�
   {id:'c',title:'A반미완료',youtube_year:2026,classes:['A반'],complete:false,timeline:[]}
  ];
  html=context.teacherCourses();assert.ok(html.includes('분류 완료 영상 2개'));assert.ok(!html.includes('A반미완료'));
- context.teacherCourseClass='A반';html=context.teacherCourses();assert.ok(html.includes('분류 완료 영상 1개'));assert.ok(html.includes('A반완료'));assert.ok(!html.includes('B반완료'));assert.ok(html.includes('2026. 01. 02.'));assert.ok(html.includes('유튜브 게시일'));
- context.teacherCourseFilter='missing';html=context.teacherCourses();assert.ok(html.includes('A반미완료'));assert.ok(!html.includes('A반완료'));assert.ok(!html.includes('id="teacher-course-class"'));
+ context.teacherCourseClasses.add('A반');html=context.teacherCourses();assert.ok(html.includes('분류 완료 영상 1개'));assert.ok(html.includes('A반완료'));assert.ok(!html.includes('B반완료'));assert.ok(html.includes('2026. 01. 02.'));assert.ok(html.includes('유튜브 게시일'));
+ context.teacherCourseFilter='missing';html=context.teacherCourses();assert.ok(html.includes('A반미완료'));assert.ok(!html.includes('A반완료'));assert.ok(!html.includes('data-course-class '));assert.ok(html.includes('data-course-missing'));
  context.teacherCourseFilter='all';html=context.teacherCourses();assert.ok(html.includes('B반완료'));assert.equal((html.match(/data-t-filter=/g)||[]).length,5);
+ context.teacherCourseFilter='classified';context.teacherCourseClasses.add('B반');
+ html=context.teacherCourses();assert.ok(html.includes('분류 완료 영상 2개'));assert.ok(html.includes('A반완료'));assert.ok(html.includes('B반완료'));assert.ok(html.includes('data-course-class value="A반" checked'));assert.ok(html.includes('data-course-class value="B반" checked'));
+ context.teacherCourseFilter='missing';context.managedData.videos=[
+  {id:'a',title:'반만없음',youtube_year:2026,classes:[],book:'쎈',subject:'대수',unit:'지수',timeline:[]},
+  {id:'b',title:'교재만없음',youtube_year:2026,classes:['A반'],book:'',subject:'대수',unit:'지수',timeline:[]},
+  {id:'c',title:'단원만없음',youtube_year:2026,classes:['B반'],book:'쎈',subject:'대수',unit:'',timeline:[]}
+ ];
+ context.teacherCourseMissing.add('class');html=context.teacherCourses();assert.ok(html.includes('반만없음'));assert.ok(!html.includes('교재만없음'));assert.ok(!html.includes('단원만없음'));
+ context.teacherCourseMissing.add('book');html=context.teacherCourses();assert.ok(html.includes('미분류 영상 2개'));assert.ok(html.includes('반만없음'));assert.ok(html.includes('교재만없음'));assert.ok(!html.includes('단원만없음'));
+ context.teacherCourseMissing.clear();html=context.teacherCourses();assert.ok(html.includes('미분류 영상 3개'));
 });
 
 test('반·학생 이름·전화번호 검색으로 실제 표시 목록이 줄어든다', async () => {
