@@ -1,16 +1,17 @@
 /* Teacher class groups and navigation. Homework is outside the current product scope. */
 delete paths.planning;
 paths.curriculum=['커리큘럼',teacherIcons.plan];
+paths.unclassified=['미분류 영상',teacherIcons.course];
 delete paths.homework;
 // Keep navigation in the order used during the teacher's work.
-const menuOrder=['overview','courses','students','analysis','curriculum','settings'];
+const menuOrder=['overview','courses','unclassified','students','analysis','curriculum','settings'];
 const menuItems=Object.fromEntries(menuOrder.map(k=>[k,paths[k]]));
 Object.keys(paths).forEach(k=>delete paths[k]);Object.assign(paths,menuItems);
 const openClassGroups=new Set();
 function renderTeacherPage(){
  teacherNavigation();
  queueMicrotask(syncSidebarState);
- const map={overview:teacherOverview,courses:teacherCourses,students:teacherGroups,analysis:teacherAnalysis,curriculum:teacherCurriculum,settings:teacherSettings,planning:teacherCurriculum};
+ const map={overview:teacherOverview,courses:teacherCourses,unclassified:teacherCourses,students:teacherGroups,analysis:teacherAnalysis,curriculum:teacherCurriculum,settings:teacherSettings,planning:teacherCurriculum};
  const html=(map[page]||teacherOverview)();queueMicrotask(()=>{bindTeacherPage();bindWorkbench()});return html;
 }
 function teacherCurriculum(){return `<div class="notice" style="margin-bottom:24px">커리큘럼은 이후에 수정할 예정이에요. 아래 일정은 기존 설계 데모예요.</div>${curriculum()}`}
