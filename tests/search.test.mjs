@@ -3,6 +3,21 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
 
+test('강의 관리에서 2026년을 기본 표시하고 전체·날짜 미확인으로 전환한다',async()=>{
+ const source=await readFile(new URL('../public/teacher.js',import.meta.url),'utf8');
+ const view=source.slice(source.indexOf('function teacherCourses(){'),source.indexOf('function teacherCourseDetail('));
+ const context={selectedCourseId:null,teacherCourseSearch:'',teacherCourseFilter:'all',teacherCourseYear:null,normalizeSearch:s=>s,heading:()=>'',esc:String,videoGroups:()=>[],badge:String,tlabel:()=>'',classificationMissing:()=>false,
+  managedData:{videos:[
+   {id:'a',title:'올해영상',youtube_year:2026,timeline:[]},
+   {id:'b',title:'지난영상',youtube_year:2025,timeline:[]},
+   {id:'c',title:'수동영상',youtube_year:null,timeline:[]}
+  ]}};
+ runInNewContext(view,context);
+ let html=context.teacherCourses();assert.ok(html.includes('올해영상'));assert.ok(!html.includes('지난영상'));assert.ok(!html.includes('수동영상'));
+ context.teacherCourseYear='all';html=context.teacherCourses();assert.ok(html.includes('지난영상'));assert.ok(html.includes('수동영상'));
+ context.teacherCourseYear='unknown';html=context.teacherCourses();assert.ok(html.includes('수동영상'));assert.ok(!html.includes('올해영상'));
+});
+
 test('반·학생 이름·전화번호 검색으로 실제 표시 목록이 줄어든다', async () => {
   const source = await readFile(new URL('../public/workbench.js', import.meta.url), 'utf8');
   const view = source.slice(source.indexOf('function teacherGroups(){'), source.indexOf('function refreshStudentSearchResults(){'));

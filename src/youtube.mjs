@@ -4,6 +4,7 @@ const scope='https://www.googleapis.com/auth/youtube.readonly';
 const digest=value=>createHash('sha256').update(value).digest('hex');
 const fail=message=>{throw Object.assign(new Error(message),{status:400})};
 export const publicSettings=rows=>Object.fromEntries(rows.filter(r=>!r.key.startsWith('youtube_')).map(r=>[r.key,r.value]));
+export const youtubeYear=value=>{const time=Date.parse(value);return Number.isFinite(time)?new Date(time+9*3600000).getUTCFullYear():null};
 
 export function classifyYouTubeTitle(title,classes){
  const compact=s=>s.replace(/\s/g,'').toLowerCase();
@@ -82,11 +83,13 @@ export class YouTubeConnection {
    }
    if(pageToken)fail('영상이 5,000개를 넘어 분할 가져오기가 필요해요.');
    const existing=new Set((await this.store.all('videos')).map(v=>v.id));const classes=(await this.store.all('classes')).map(c=>c.name);
+   const dates={...((await this.store.all('settings',{key:'youtube_video_dates'}))[0]?.value||{})};
    let imported=0,skipped=0,outside_year=0,unknown_date=0,unassigned=0,needs_review=0;const list=[...ids];
    for(let i=0;i<list.length;i+=50){
     const batch=await this.api('videos',{part:'snippet,status',id:list.slice(i,i+50).join(','),maxResults:'50'},access);
     for(const item of batch.items||[]){
      const publishedAt=Date.parse(item.snippet?.publishedAt);
+     if(Number.isFinite(publishedAt))dates[item.id]=item.snippet.publishedAt;
      if(!Number.isFinite(publishedAt)){unknown_date++;continue}
      if(publishedAt<start||publishedAt>=end){outside_year++;continue}
      if(existing.has(item.id)||item.snippet?.channelId!==data.channel.id||!['public','unlisted'].includes(item.status?.privacyStatus)||!item.status?.embeddable){skipped++;continue}
@@ -97,6 +100,7 @@ export class YouTubeConnection {
      if(!parsed.classes.length||!parsed.book||!parsed.subject||!parsed.unit)needs_review++;
     }
    }
+   await this.store.put('settings',{key:'youtube_video_dates',value:dates});
    data.last_sync=new Date().toISOString();await this.save(data);return {year,imported,skipped,outside_year,unknown_date,unassigned,needs_review};
   }finally{this.busy=false}
  }

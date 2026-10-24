@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { config } from './config.mjs';
 import { LocalStore,SupabaseStore,StoreError } from './store.mjs';
 import { normalizeSchedule } from './schedules.mjs';
-import { YouTubeConnection,publicSettings } from './youtube.mjs';
+import { YouTubeConnection,publicSettings,youtubeYear } from './youtube.mjs';
 
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'../public');
 const assets=new Map([['/','index.html'],...['index.html','search.js','app.js','accounts.js','teacher.js','workbench.js','production.js','style.css'].map(f=>['/'+f,f])]);
@@ -46,7 +46,8 @@ export function createApp(cfg,store,options={}){
    if(req.method==='GET'&&path==='/api/videos'){const s=await requireRole(req);const fav=new Set((await store.all('favorites',{student_id:s.id})).map(f=>f.video_id));return send(res,200,{videos:(await allowedVideos(s)).map(v=>publicVideo(v,fav.has(v.id)))})}
    if(req.method==='GET'&&path==='/api/teacher/state'){
     await requireRole(req,'teacher');const [students,videos,relations,class_info,settings]=await Promise.all(['students','videos','video_classes','classes','settings'].map(t=>store.all(t)));
-    return send(res,200,{students:students.sort((a,b)=>a.id-b.id),classes:class_info.map(c=>c.name).sort(),class_info,settings:publicSettings(settings),youtube:await youtube.status(),videos:videos.sort((a,b)=>b.added_at-a.added_at).map(v=>({...v,is_new:Date.now()/1000-v.added_at<604800,classes:relations.filter(r=>r.video_id===v.id).map(r=>r.class_name),has_draft:v.timeline_draft!==null,timeline_draft:v.timeline_draft??v.timeline}))});
+    const videoDates=settings.find(row=>row.key==='youtube_video_dates')?.value||{};
+    return send(res,200,{students:students.sort((a,b)=>a.id-b.id),classes:class_info.map(c=>c.name).sort(),class_info,settings:publicSettings(settings),youtube:await youtube.status(),videos:videos.sort((a,b)=>b.added_at-a.added_at).map(v=>({...v,youtube_year:youtubeYear(videoDates[v.id]),is_new:Date.now()/1000-v.added_at<604800,classes:relations.filter(r=>r.video_id===v.id).map(r=>r.class_name),has_draft:v.timeline_draft!==null,timeline_draft:v.timeline_draft??v.timeline}))});
    }
    if(req.method==='GET'&&assets.has(path)){const file=assets.get(path);const contents=await readFile(resolve(ROOT,file));res.writeHead(200,{'Content-Type':file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8'});return res.end(contents)}
    if(req.method!=='POST')return send(res,404,{error:'없는 페이지예요.'});

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { YouTubeConnection,publicSettings,classifyYouTubeTitle } from '../src/youtube.mjs';
+import { YouTubeConnection,publicSettings,classifyYouTubeTitle,youtubeYear } from '../src/youtube.mjs';
 import { LocalStore } from '../src/store.mjs';
 import { createApp } from '../src/server.mjs';
 
@@ -98,6 +98,11 @@ test('1,000개 업로드를 페이지 순서와 무관하게 2026년만 가져�
   const unknown=saved.find(v=>v.id===items[4].id);assert.equal(unknown.class_name,'');assert.equal(unknown.book,'');
   const irregular=saved.find(v=>v.id===items[5].id);assert.equal(irregular.class_name,'고1B2');assert.equal(irregular.subject,'');
   assert.equal((await store.all('classes')).length,1);
+  const dates=(await store.all('settings',{key:'youtube_video_dates'}))[0].value;
+  assert.equal(youtubeYear(dates[items[0].id]),2026);
+  assert.equal(youtubeYear(dates[items[2].id]),2027);
+  assert.equal(youtubeYear(dates[items[3].id]),2025);
+  assert.equal((await yt.sync()).imported,0);
   await assert.rejects(yt.sync({year:'2026'}));
  }finally{store.close()}
 });
