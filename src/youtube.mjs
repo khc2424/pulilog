@@ -94,7 +94,7 @@ export class YouTubeConnection {
      if(publishedAt<start||publishedAt>=end){outside_year++;continue}
      if(existing.has(item.id)||item.snippet?.channelId!==data.channel.id||!['public','unlisted'].includes(item.status?.privacyStatus)||!item.status?.embeddable){skipped++;continue}
      const title=String(item.snippet.title).slice(0,300),parsed=classifyYouTubeTitle(title,classes);
-     await this.store.saveVideo({id:item.id,title,...parsed,added_at:Date.now()/1000,timeline:[],timeline_draft:null,reviewed:false,published:false,notes:'',supplement_needed:false},parsed.classes);
+     await this.store.saveVideo({id:item.id,title,...parsed,added_at:Date.now()/1000,timeline:[],timeline_draft:null,reviewed:false,published:true,notes:'',supplement_needed:false},parsed.classes);
      existing.add(item.id);imported++;
      if(!parsed.classes.length)unassigned++;
      if(!parsed.classes.length||!parsed.book||!parsed.subject||!parsed.unit)needs_review++;

@@ -63,6 +63,11 @@ export function createApp(cfg,store,options={}){
    if(path==='/api/logout'||path==='/api/teacher/logout'){const role=path.includes('/teacher/')?'teacher':'student';const token=cookieToken(req,role);if(token)await store.del('sessions',{digest:hash(token)});return send(res,200,{ok:true},cookie(role,'',false,true))}
    if(path==='/api/favorite'){const s=await requireRole(req);check((await allowedVideos(s)).some(v=>v.id===d.video_id),'이 반에서 볼 수 없는 영상이에요.',404);const value={student_id:s.id,video_id:d.video_id};if(d.favorite===true)await store.put('favorites',value);else await store.del('favorites',value);return send(res,200,{favorite:d.favorite===true})}
    const teacherSession=await requireRole(req,'teacher');
+   if(path==='/api/teacher/videos/visibility'){
+    check(Array.isArray(d.ids)&&d.ids.length<=5000&&d.ids.every(id=>typeof id==='string'&&/^[A-Za-z0-9_-]{11}$/.test(id))&&typeof d.published==='boolean');
+    const ids=[...new Set(d.ids)],known=new Set((await store.all('videos')).map(v=>v.id));check(ids.every(id=>known.has(id)),'영상 목록을 다시 확인해주세요.');
+    await store.setVideosVisibility(ids,d.published);return send(res,200,{updated:ids.length,published:d.published});
+   }
    if(path==='/api/teacher/videos/remove-outside-year'){
     const year=d.keep_year;check(Number.isInteger(year)&&year>=2005&&year<=2100,'유지할 연도를 확인해주세요.');
     const dates=(await store.all('settings',{key:'youtube_video_dates'}))[0]?.value||{};
@@ -83,7 +88,7 @@ export function createApp(cfg,store,options={}){
    }
    if(path==='/api/teacher/video'){
     const id=clean(d.id,11);check(/^[A-Za-z0-9_-]{11}$/.test(id));const old=(await store.all('videos',{id}))[0];const raw=d.classes??[d.class_name];check(Array.isArray(raw)&&raw.length<=50);const classes=[...new Set(raw.map(g=>clean(g,60)).filter(Boolean))];
-    const v={...(old||{id,added_at:Date.now()/1000,timeline:[],reviewed:false,timeline_draft:null,notes:'',supplement_needed:false}),title:clean(d.title),class_name:classes[0]||'',book:clean(d.book),subject:clean(d.subject),unit:clean(d.unit),published:d.published===true||d.published===1};check(v.title);check(!v.published||classes.length&&v.book&&v.subject&&v.unit,'학생 표시 전에 반·교재·과목·단원을 확인해주세요.');await store.saveVideo(v,classes);return send(res,200,{ok:true});
+    const v={...(old||{id,added_at:Date.now()/1000,timeline:[],reviewed:false,timeline_draft:null,notes:'',supplement_needed:false}),title:clean(d.title),class_name:classes[0]||'',book:clean(d.book),subject:clean(d.subject),unit:clean(d.unit),published:d.published==null?(old?.published??true):(d.published===true||d.published===1)};check(v.title);await store.saveVideo(v,classes);return send(res,200,{ok:true});
    }
    if(path==='/api/teacher/timeline'||path==='/api/teacher/note'){
     const old=(await store.all('videos',{id:clean(d.id,11)}))[0];check(old,'영상을 찾을 수 없어요.',404);

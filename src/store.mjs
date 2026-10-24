@@ -15,6 +15,7 @@ export class LocalStore {
  async put(t,r){if(t==='students'&&r.id==null)r={...r,id:Math.max(0,...this.rows(t).map(x=>x.id))+1};return this.write(t,r)}
  remove(t,f){for(const r of this.rows(t).filter(r=>match(r,f)))this.db.prepare('DELETE FROM records WHERE t=? AND k=?').run(t,keyOf(t,r))}
  async del(t,f){this.remove(t,f)}
+ async setVideosVisibility(ids,published){this.db.exec('BEGIN IMMEDIATE');try{for(const id of ids){const row=this.rows('videos').find(v=>v.id===id);if(row)this.write('videos',{...row,published})}this.db.exec('COMMIT')}catch(error){this.db.exec('ROLLBACK');throw error}}
  async deleteVideos(ids){this.db.exec('BEGIN IMMEDIATE');try{for(const id of ids){this.remove('favorites',{video_id:id});this.remove('video_classes',{video_id:id});this.remove('videos',{id})}this.db.exec('COMMIT')}catch(error){this.db.exec('ROLLBACK');throw error}}
  async patch(t,f,changes){for(const r of this.rows(t).filter(r=>match(r,f)))this.write(t,{...r,...changes})}
  async saveVideo(v,classes){this.db.exec('BEGIN IMMEDIATE');try{const old=this.rows('videos').find(x=>x.id===v.id);this.write('videos',old?{...old,...Object.fromEntries(['title','class_name','book','subject','unit','published'].map(k=>[k,v[k]]))}:v);this.remove('video_classes',{video_id:v.id});for(const g of classes){if(!this.rows('classes').some(r=>r.name===g))this.write('classes',{name:g,schedule:''});this.write('video_classes',{video_id:v.id,class_name:g})}this.db.exec('COMMIT')}catch(e){this.db.exec('ROLLBACK');throw e}}
@@ -36,6 +37,10 @@ export class SupabaseStore {
  async all(t,f={}){const out=[];for(let offset=0;offset<100000;offset+=1000){const rows=await this.request(`${this.query(t,f)}&select=*&limit=1000&offset=${offset}&order=${t==='students'?'id':t==='classes'?'name':t==='videos'?'id':t==='settings'?'key':t==='sessions'?'digest':t==='favorites'?'student_id,video_id':'video_id,class_name'}`);out.push(...rows);if(rows.length<1000)return out}throw new StoreError()}
  async put(t,r){const rows=await this.request(`pl_${t}`,{method:'POST',body:r,headers:{Prefer:'resolution=merge-duplicates,return=representation'}});return rows[0]}
  async del(t,f){await this.request(this.query(t,f),{method:'DELETE',headers:{Prefer:'return=minimal'}})}
+ async setVideosVisibility(ids,published){
+  if(!ids.every(id=>/^[A-Za-z0-9_-]{11}$/.test(id)))throw new Error('Invalid video IDs');
+  for(let i=0;i<ids.length;i+=100){const query=new URLSearchParams({id:'in.('+ids.slice(i,i+100).join(',')+')'});await this.request('pl_videos?'+query,{method:'PATCH',body:{published},headers:{Prefer:'return=minimal'}})}
+ }
  async deleteVideos(ids){
   if(!ids.every(id=>/^[A-Za-z0-9_-]{11}$/.test(id)))throw new Error('Invalid video IDs');
   for(let i=0;i<ids.length;i+=100){const query=new URLSearchParams({id:'in.('+ids.slice(i,i+100).join(',')+')'});await this.request('pl_videos?'+query,{method:'DELETE',headers:{Prefer:'return=minimal'}})}
