@@ -14,8 +14,8 @@ export class YouTubeAutoImport {
   if(!Number.isInteger(year)||year<2005||year>2100)invalid('가져올 연도를 확인해주세요.');
   if(!(await this.youtube.status()).connected)invalid('Google 계정을 먼저 연결해주세요.');
   if(this.busy||this.youtube.busy)invalid('영상 가져오기가 끝난 뒤 설정해주세요.',409);
-  const previous=await this.read(),token=randomBytes(32).toString('base64url');
-  await this.save({enabled:true,year,token_hash:hash(token),last_checked:null,last_success:previous?.last_success||null,last_imported:0,error:''});
+  const previous=await this.read(),token=previous?.token_encrypted?this.youtube.open(previous.token_encrypted):randomBytes(32).toString('base64url');
+  await this.save({...previous,enabled:true,year,token_hash:hash(token),token_encrypted:this.youtube.seal(token),last_checked:previous?.last_checked||null,last_success:previous?.last_success||null,last_imported:previous?.last_imported||0,error:previous?.error||''});
   const url=this.cfg.origin+'/api/jobs/youtube-import';
   // The reusable credential stays in Vault; the cron command contains only its name.
   const sql=`begin;

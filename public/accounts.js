@@ -15,15 +15,7 @@ async function refreshStudent(){
  const session=await requestAPI('/api/session');signedStudent=session.student;teacherAuthorized=session.teacher;
  libraryVideos=signedStudent?(await requestAPI('/api/videos')).videos:[];
 }
-let teacherRefreshChecked=false;
-async function refreshYouTubeAfterOpen(){
- try{await requestAPI('/api/teacher/youtube/refresh',{})}catch{}
- try{await refreshTeacher();if(accountReady&&!studentMode)render()}catch{}
-}
-async function refreshTeacher(){
- managedData=await requestAPI('/api/teacher/state');
- if(!teacherRefreshChecked&&!studentMode){teacherRefreshChecked=true;if(managedData.youtube?.connected)void refreshYouTubeAfterOpen()}
-}
+async function refreshTeacher(){managedData=await requestAPI('/api/teacher/state')}
 function normalizeSearch(s){return String(s).normalize('NFKC').toLowerCase().replace(/\s+/g,'')}
 function currentClassVideos(){
  const terms=catalogSearch.trim().split(/\s+/).filter(Boolean).map(normalizeSearch);

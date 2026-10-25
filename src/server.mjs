@@ -59,7 +59,7 @@ export function createApp(cfg,store,options={}){
    if(req.method==='GET'&&path==='/api/teacher/state'){
     await requireRole(req,'teacher');const [students,videos,relations,class_info,settings]=await Promise.all(['students','videos','video_classes','classes','settings'].map(t=>store.all(t)));
     const videoDates=settings.find(row=>row.key==='youtube_video_dates')?.value||{};
-    return send(res,200,{students:students.sort((a,b)=>a.id-b.id),classes:class_info.map(c=>c.name).sort(),class_info,settings:publicSettings(settings),youtube:{...await youtube.status(),auto_import:await youtubeAuto.status(),refresh_import:settings.find(row=>row.key==='youtube_refresh_import')?.value||{}},videos:videos.sort((a,b)=>b.added_at-a.added_at).map(v=>({...v,youtube_year:youtubeYear(videoDates[v.id]),youtube_published_at:Number.isFinite(Date.parse(videoDates[v.id]))?videoDates[v.id]:null,is_new:Date.now()/1000-v.added_at<604800,classes:relations.filter(r=>r.video_id===v.id).map(r=>r.class_name),has_draft:v.timeline_draft!==null,timeline_draft:v.timeline_draft??v.timeline}))});
+    return send(res,200,{students:students.sort((a,b)=>a.id-b.id),classes:class_info.map(c=>c.name).sort(),class_info,settings:publicSettings(settings),youtube:{...await youtube.status(),auto_import:await youtubeAuto.status()},videos:videos.sort((a,b)=>b.added_at-a.added_at).map(v=>({...v,youtube_year:youtubeYear(videoDates[v.id]),youtube_published_at:Number.isFinite(Date.parse(videoDates[v.id]))?videoDates[v.id]:null,is_new:Date.now()/1000-v.added_at<604800,classes:relations.filter(r=>r.video_id===v.id).map(r=>r.class_name),has_draft:v.timeline_draft!==null,timeline_draft:v.timeline_draft??v.timeline}))});
    }
    if(req.method==='GET'&&assets.has(path)){const file=assets.get(path);const contents=await readFile(resolve(ROOT,file));res.writeHead(200,{'Content-Type':file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8'});return res.end(contents)}
    if(req.method!=='POST')return send(res,404,{error:'없는 페이지예요.'});
@@ -114,20 +114,6 @@ export function createApp(cfg,store,options={}){
     return send(res,200,{deleted:targets.length,kept:videos.length-targets.length,unknown_date:unknown});
    }
    if(path==='/api/teacher/youtube/connect'){const started=await youtube.start(teacherSession);return send(res,200,{url:started.url},oauthCookie(started.state))}
-   if(path==='/api/teacher/youtube/refresh'){
-    const previous=(await store.all('settings',{key:'youtube_refresh_import'}))[0]?.value||{};
-    if(youtube.busy)return send(res,200,{skipped:'busy'});
-    if(previous.last_success&&Date.now()-Date.parse(previous.last_success)<60000)return send(res,200,{skipped:'recent'});
-    const checked=new Date().toISOString();
-    try{
-     const result=await youtube.sync({year:2026,newOnly:true});
-     await store.put('settings',{key:'youtube_refresh_import',value:{last_checked:checked,last_success:new Date().toISOString(),last_imported:result.imported,error:''}});
-     return send(res,200,result);
-    }catch(error){
-     await store.put('settings',{key:'youtube_refresh_import',value:{...previous,last_checked:checked,error:error.status===400?error.message:'새 영상 확인에 실패했어요. 다시 새로고침해주세요.'}});
-     throw error;
-    }
-   }
    if(path==='/api/teacher/youtube/auto-setup')return send(res,200,await youtubeAuto.prepare(d.year??2026));
    if(path==='/api/teacher/youtube/auto-toggle')return send(res,200,await youtubeAuto.toggle(d.enabled));
    if(path==='/api/teacher/youtube/sync')return send(res,200,await youtube.sync({year:d.year??2026}));
