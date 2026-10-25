@@ -9,7 +9,7 @@ export class YouTubeAutoImport {
  constructor(cfg,store,youtube){this.cfg=cfg;this.store=store;this.youtube=youtube;this.busy=false}
  async read(){return (await this.store.all('settings',{key}))[0]?.value||null}
  async save(value){await this.store.put('settings',{key,value})}
- async status(){const s=await this.read();return {prepared:!!s,enabled:!!s?.enabled,year:s?.year??2026,interval_minutes:10,last_checked:s?.last_checked||null,last_success:s?.last_success||null,last_imported:s?.last_imported??0,error:s?.error||'',scheduler_seen:!!s?.last_checked}}
+ async status(){const s=await this.read();return {prepared:!!s,enabled:!!s?.enabled,year:s?.year??2026,interval_minutes:180,last_checked:s?.last_checked||null,last_success:s?.last_success||null,last_imported:s?.last_imported??0,error:s?.error||'',scheduler_seen:!!s?.last_checked}}
  async prepare(year){
   if(!Number.isInteger(year)||year<2005||year>2100)invalid('가져올 연도를 확인해주세요.');
   if(!(await this.youtube.status()).connected)invalid('Google 계정을 먼저 연결해주세요.');
@@ -31,7 +31,7 @@ begin
   perform vault.update_secret(secret_id, ${quote(token)});
  end if;
 end $pulilog$;
-select cron.schedule('pulilog-youtube-auto-import', '7,17,27,37,47,57 * * * *', $job$
+select cron.schedule('pulilog-youtube-auto-import', '7 */3 * * *', $job$
  select net.http_post(
   url := ${quote(url)},
   headers := jsonb_build_object('Content-Type','application/json','Authorization','Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'pulilog_youtube_import_token')),
