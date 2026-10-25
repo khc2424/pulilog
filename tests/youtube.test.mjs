@@ -153,6 +153,13 @@ test('유튜브 연결 API는 선생님 전용이고 비밀 설정은 응답에 
   const studentVideos=await (await fetch(cfg.origin+'/api/videos',{headers:{Cookie:studentCookie}})).json();
   assert.ok(studentVideos.videos.some(v=>v.id==='Default0002'));
   assert.ok(!studentVideos.videos.some(v=>v.id==='Default0001'));
+  // Site import time must not move an older YouTube lesson ahead of a newer one.
+  await store.saveVideo({id:'Newest00001',title:'최신 강의',added_at:0,published:true,timeline:[]},['테스트반']);
+  await store.put('settings',{key:'youtube_video_dates',value:{Keep2026001:'2026-03-01T00:00:00Z',Newest00001:'2026-10-25T00:00:00Z'}});
+  const ordered=await (await fetch(cfg.origin+'/api/videos',{headers:{Cookie:studentCookie}})).json();
+  assert.deepEqual(ordered.videos.slice(0,2).map(v=>v.id),['Newest00001','Keep2026001']);
+  await store.deleteVideos(['Newest00001']);
+  await store.put('settings',{key:'youtube_video_dates',value:{Keep2026001:'2026-03-01T00:00:00Z',Drop2025001:'2025-03-01T00:00:00Z'}});
   await teacherPost('/api/teacher/videos/visibility',{ids:['Default0002'],published:false});
   const afterHide=await (await fetch(cfg.origin+'/api/videos',{headers:{Cookie:studentCookie}})).json();
   assert.ok(!afterHide.videos.some(v=>v.id==='Default0002'));

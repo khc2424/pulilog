@@ -29,7 +29,12 @@ export function createApp(cfg,store,options={}){
  async function requireRole(req,role='student'){const s=await session(req,role);check(s,'로그인이 필요해요.',401);return s}
  async function newSession(role,student_id=null,remember=false){const token=randomBytes(32).toString('base64url');await store.put('sessions',{digest:hash(token),role,student_id,expires:Date.now()/1000+(remember?2592000:43200)});return cookie(role,token,remember)}
  async function rate(req,path){const remote=cfg.trustProxy?clean(req.headers['x-forwarded-for']).split(',').at(-1).trim():req.socket.remoteAddress;const key=createHmac('sha256',cfg.sessionSecret).update(path+':'+remote).digest('hex');check(await store.consumeRate(key,15,60),'잠시 후 다시 시도해주세요.',429)}
- async function allowedVideos(s){const ids=new Set((await store.all('video_classes',{class_name:s.class_name})).map(r=>r.video_id));return (await store.all('videos')).filter(v=>v.published&&ids.has(v.id)).sort((a,b)=>b.added_at-a.added_at||a.id.localeCompare(b.id))}
+ async function allowedVideos(s){
+  const [relations,videos,settings]=await Promise.all([store.all('video_classes',{class_name:s.class_name}),store.all('videos'),store.all('settings',{key:'youtube_video_dates'})]);
+  const ids=new Set(relations.map(r=>r.video_id)),dates=settings[0]?.value||{};
+  const publishedTime=v=>{const time=Date.parse(dates[v.id]);return Number.isFinite(time)?time:0};
+  return videos.filter(v=>v.published&&ids.has(v.id)).sort((a,b)=>publishedTime(b)-publishedTime(a)||b.added_at-a.added_at||a.id.localeCompare(b.id));
+ }
  return http.createServer(async(req,res)=>{
   res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('X-Frame-Options','DENY');res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=()');
   res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://i.ytimg.com; frame-src https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
