@@ -54,9 +54,13 @@ test('유튜브 OAuth 상태 검증·토큰 암호화·일부 공개 가져오�
   assert.equal((await store.all('videos'))[0].notes,'유지할 기록');
   assert.equal((await store.all('videos'))[0].published,false);
   assert.equal((await store.all('classes')).length,1);
+  yt.busy=true;await assert.rejects(yt.removeVideos([saved.id]));assert.equal((await store.all('videos')).length,1);yt.busy=false;
+  const removing=yt.removeVideos([saved.id]);await assert.rejects(yt.sync());await removing;
+  assert.equal((await yt.sync()).imported,0);
+  const restarted=new YouTubeConnection(cfg,store,fetcher);assert.equal((await restarted.sync()).imported,0);
   assert.deepEqual(await yt.disconnect(),{revoked:true});
   assert.equal((await yt.status()).connected,false);
-  assert.equal((await store.all('videos')).length,1);
+  assert.equal((await store.all('videos')).length,0);
  }finally{store.close()}
 });
 
@@ -161,7 +165,7 @@ test('유튜브 연결 API는 선생님 전용이고 비밀 설정은 응답에 
   await store.saveVideo({id:'TempVideo01',title:'임시 삭제 특강',published:true},[]);
   await store.put('settings',{key:'youtube_excluded_video_ids',value:['Default0001','TempVideo01']});
   assert.equal((await teacherPost('/api/teacher/videos/delete',{ids:['TempVideo01'],execute:true,exclude_from_import:false})).status,200);
-  assert.deepEqual((await store.all('settings',{key:'youtube_excluded_video_ids'}))[0].value,['Default0001']);
+  assert.deepEqual((await store.all('settings',{key:'youtube_excluded_video_ids'}))[0].value,['Default0001','TempVideo01']);
   assert.equal((await store.all('videos',{id:'TempVideo01'})).length,0);
   await store.put('classes',{name:'약논반',schedule:'TTS'});
   for(const [id,published]of [['AliasTest01',true],['AliasTest02',false]])await store.saveVideo({id,title:'NK 약술형논술 수학1',class_name:'',published,book:'',subject:'',unit:'',timeline:[['1',1,'개념','00:10',10]],notes:'유지할 메모'},[]);
@@ -176,6 +180,15 @@ test('유튜브 연결 API는 선생님 전용이고 비밀 설정은 응답에 
   assert.deepEqual(aliasList.videos.map(v=>v.id),['AliasTest01']);
   const otherClassList=await (await fetch(cfg.origin+'/api/videos',{headers:{Cookie:studentCookie}})).json();
   assert.ok(!otherClassList.videos.some(v=>v.id.startsWith('Alias')));
+  const existingDates=(await store.all('settings',{key:'youtube_video_dates'}))[0].value;
+  await store.put('settings',{key:'youtube_video_dates',value:{...existingDates,History0001:'2026-02-01T00:00:00Z'}});
+  const recoveredPreview=await (await teacherPost('/api/teacher/videos/recover-deletion-history',{ids:['TempVideo01','Keep2026001']})).json();
+  assert.ok(recoveredPreview.ids.includes('History0001'));assert.ok(!recoveredPreview.ids.includes('Keep2026001'));
+  const videoCount=(await store.all('videos')).length;
+  assert.equal((await teacherPost('/api/teacher/videos/recover-deletion-history',{ids:['TempVideo01','Keep2026001'],execute:true,confirmed_ids:recoveredPreview.ids})).status,200);
+  assert.equal((await store.all('videos')).length,videoCount);
+  const exclusions=(await store.all('settings',{key:'youtube_excluded_video_ids'}))[0].value;
+  assert.ok(exclusions.includes('History0001'));assert.ok(exclusions.includes('TempVideo01'));assert.ok(!exclusions.includes('Keep2026001'));
   await store.put('settings',{key:'youtube_state_private',value:'secret-ciphertext'});
   const state=await (await fetch(cfg.origin+'/api/teacher/state',{headers:{Cookie:cookie}})).json();
   assert.deepEqual(state.settings,{});assert.equal(state.youtube.configured,false);

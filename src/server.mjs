@@ -64,6 +64,16 @@ export function createApp(cfg,store,options={}){
    if(path==='/api/logout'||path==='/api/teacher/logout'){const role=path.includes('/teacher/')?'teacher':'student';const token=cookieToken(req,role);if(token)await store.del('sessions',{digest:hash(token)});return send(res,200,{ok:true},cookie(role,'',false,true))}
    if(path==='/api/favorite'){const s=await requireRole(req);check((await allowedVideos(s)).some(v=>v.id===d.video_id),'이 반에서 볼 수 없는 영상이에요.',404);const value={student_id:s.id,video_id:d.video_id};if(d.favorite===true)await store.put('favorites',value);else await store.del('favorites',value);return send(res,200,{favorite:d.favorite===true})}
    const teacherSession=await requireRole(req,'teacher');
+   if(path==='/api/teacher/videos/recover-deletion-history'){
+    const extra=d.ids??[];check(Array.isArray(extra)&&extra.length<=5000&&extra.every(id=>typeof id==='string'&&/^[A-Za-z0-9_-]{11}$/.test(id)));
+    const dates=(await store.all('settings',{key:'youtube_video_dates'}))[0]?.value||{};
+    const current=new Set((await store.all('videos')).map(v=>v.id));
+    const candidates=[...new Set([...Object.keys(dates),...extra])].filter(id=>/^[A-Za-z0-9_-]{11}$/.test(id));
+    const absent=candidates.filter(id=>!current.has(id)).sort();
+    if(d.execute!==true)return send(res,200,{known_count:candidates.length,absent_count:absent.length,current_count:current.size,ids:absent});
+    check(Array.isArray(d.confirmed_ids)&&d.confirmed_ids.length===absent.length&&new Set(d.confirmed_ids).size===absent.length&&absent.every(id=>d.confirmed_ids.includes(id)),'삭제 이력이 변경됐어요. 목록을 다시 확인해주세요.',409);
+    return send(res,200,{recorded:await youtube.rememberDeletedVideos(absent)});
+   }
    if(path==='/api/teacher/videos/apply-title-aliases'){
     const registered=(await store.all('classes')).map(g=>g.name),relations=await store.all('video_classes');
     const targets=(await store.all('videos')).map(video=>({video,alias:titleClassAlias(video.title,registered)})).filter(({video,alias})=>alias&&!relations.some(r=>r.video_id===video.id&&r.class_name===alias.name));
@@ -75,10 +85,7 @@ export function createApp(cfg,store,options={}){
     check(Array.isArray(d.ids)&&d.ids.length>0&&d.ids.length<=5000&&d.ids.every(id=>typeof id==='string'&&/^[A-Za-z0-9_-]{11}$/.test(id)));
     const ids=[...new Set(d.ids)],known=new Set((await store.all('videos')).map(v=>v.id));check(ids.every(id=>known.has(id)),'영상 목록을 다시 확인해주세요.');
     if(d.execute!==true)return send(res,200,{delete_count:ids.length,ids});
-    const exclusions=(await store.all('settings',{key:'youtube_excluded_video_ids'}))[0]?.value||[];
-    const nextExclusions=d.exclude_from_import===false?exclusions.filter(id=>!ids.includes(id)):[...new Set([...exclusions,...ids])];
-    await store.put('settings',{key:'youtube_excluded_video_ids',value:nextExclusions});
-    await store.deleteVideos(ids);return send(res,200,{deleted:ids.length});
+    return send(res,200,{deleted:await youtube.removeVideos(ids)});
    }
    if(path==='/api/teacher/videos/visibility'){
     check(Array.isArray(d.ids)&&d.ids.length<=5000&&d.ids.every(id=>typeof id==='string'&&/^[A-Za-z0-9_-]{11}$/.test(id))&&typeof d.published==='boolean');
@@ -92,7 +99,7 @@ export function createApp(cfg,store,options={}){
     const unknown=videos.filter(v=>youtubeYear(dates[v.id])===null).length;
     if(d.execute!==true)return send(res,200,{keep_year:year,delete_count:targets.length,unknown_date:unknown,ids:targets.map(v=>v.id)});
     check(Array.isArray(d.ids)&&d.ids.length===targets.length&&new Set(d.ids).size===targets.length&&targets.every(v=>d.ids.includes(v.id)),'삭제 대상이 변경됐어요. 목록을 다시 확인해주세요.',409);
-    await store.deleteVideos(targets.map(v=>v.id));
+    await youtube.removeVideos(targets.map(v=>v.id));
     return send(res,200,{deleted:targets.length,kept:videos.length-targets.length,unknown_date:unknown});
    }
    if(path==='/api/teacher/youtube/connect'){const started=await youtube.start(teacherSession);return send(res,200,{url:started.url},oauthCookie(started.state))}

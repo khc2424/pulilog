@@ -34,3 +34,10 @@
 - [채널 조회](https://developers.google.com/youtube/data/reference/rest/v3/channels/list)
 - [업로드 목록 조회](https://developers.google.com/youtube/data/reference/rest/v3/playlistItems/list)
 - [OAuth 토큰 만료](https://developers.google.com/identity/protocols/oauth2#expiration)
+
+## 영상 삭제와 재수집
+
+- 풀이로그에서 삭제한 영상 ID는 서버에 보관하며 수동·자동 가져오기의 공통 수집 경로에서 항상 제외합니다. 유튜브 제목을 바꾸거나 서버를 재시작해도 제외가 유지됩니다.
+- 삭제 화면에는 재수집 허용 옵션을 두지 않습니다. 이전 클라이언트가 재수집 허용 값을 보내도 서버는 무시합니다.
+- 영상 가져오기와 삭제는 같은 서버에서 동시에 실행되지 않도록 처리합니다.
+- 이전 삭제분은 백업 및 최초 가져오기 당시의 조회 기록과 대조하여 제외 이력을 보완합니다. 현재 등록된 영상은 이력 보완 과정에서 제외하지 않습니다.

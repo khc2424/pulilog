@@ -64,6 +64,28 @@ export class YouTubeConnection {
   await this.save({refresh_token:tokens.refresh_token,access_token:tokens.access_token,expires:Date.now()/1000+Number(tokens.expires_in||3600)-60,channel:{id:c.id,title:c.snippet.title,uploads:c.contentDetails.relatedPlaylists.uploads},last_sync:null});
  }
  async access(data){if(data.expires>Date.now()/1000)return data.access_token;const token=await this.token({grant_type:'refresh_token',refresh_token:data.refresh_token});data.access_token=token.access_token;data.expires=Date.now()/1000+Number(token.expires_in||3600)-60;if(token.refresh_token)data.refresh_token=token.refresh_token;await this.save(data);return data.access_token}
+ async withVideoLock(action){
+  if(this.busy)fail('영상 가져오기나 삭제가 진행 중이에요. 완료 후 다시 시도해주세요.');
+  this.busy=true;try{return await action()}finally{this.busy=false}
+ }
+ async addDeletionExclusions(ids){
+  const previous=(await this.store.all('settings',{key:'youtube_excluded_video_ids'}))[0]?.value||[];
+  await this.store.put('settings',{key:'youtube_excluded_video_ids',value:[...new Set([...previous,...ids])]});
+ }
+ async rememberDeletedVideos(ids){
+  return this.withVideoLock(async()=>{
+   const current=new Set((await this.store.all('videos')).map(v=>v.id));
+   const deleted=ids.filter(id=>!current.has(id));await this.addDeletionExclusions(deleted);return deleted.length;
+  });
+ }
+ async removeVideos(ids){
+  return this.withVideoLock(async()=>{
+   const known=new Set((await this.store.all('videos')).map(v=>v.id));
+   if(!ids.every(id=>known.has(id)))fail('영상 목록을 다시 확인해주세요.');
+   await this.addDeletionExclusions(ids);
+   await this.store.deleteVideos(ids);return ids.length;
+  });
+ }
  async disconnect(){
   if(this.busy)fail('영상 가져오기가 끝난 뒤 연결을 해제해주세요.');
   const data=await this.read();let revoked=!data;

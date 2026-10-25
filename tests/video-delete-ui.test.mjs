@@ -36,7 +36,7 @@ test('영상 삭제는 확인 전 요청하지 않고 취소·실패·성공 상
  await nodes['#video-delete-confirm'].onclick({currentTarget:nodes['#video-delete-confirm']});
  assert.equal(context.managedData.videos.length,1);assert.equal(nodes['#video-delete-error'].textContent,'연결 확인');assert.equal(nodes['#video-delete-confirm'].disabled,false);
  fail=false;await nodes['#video-delete-confirm'].onclick({currentTarget:nodes['#video-delete-confirm']});
- assert.deepEqual(calls.at(-1),{path:'/api/teacher/videos/delete',body:{ids:['EeNDcFziKIQ'],execute:true,exclude_from_import:false}});
+ assert.deepEqual(calls.at(-1),{path:'/api/teacher/videos/delete',body:{ids:['EeNDcFziKIQ'],execute:true}});
  assert.equal(context.managedData.videos.length,0);assert.equal(context.selectedCourseId,null);assert.equal(context.timelineDrafts.EeNDcFziKIQ,undefined);assert.equal(renders,1);
  context.managedData.videos=[{id:'a',title:'첫 강의',classes:['A반']},{id:'b',title:'둘째 강의',classes:['B반']},{id:'c',title:'유지 강의',classes:[]}];
  context.selectedTeacherVideoIds.add('a');context.selectedTeacherVideoIds.add('b');
@@ -45,6 +45,6 @@ test('영상 삭제는 확인 전 요청하지 않고 취소·실패·성공 상
  fail=true;await nodes['#video-delete-confirm'].onclick({currentTarget:nodes['#video-delete-confirm']});
  assert.equal(context.managedData.videos.length,3);assert.equal(context.selectedTeacherVideoIds.size,2);
  fail=false;await nodes['#video-delete-confirm'].onclick({currentTarget:nodes['#video-delete-confirm']});
- assert.deepEqual(calls.at(-1).body,{ids:['a','b'],execute:true,exclude_from_import:false});
+ assert.deepEqual(calls.at(-1).body,{ids:['a','b'],execute:true});
  assert.equal(context.managedData.videos.length,1);assert.equal(context.managedData.videos[0].id,'c');assert.equal(context.selectedTeacherVideoIds.size,0);
 });

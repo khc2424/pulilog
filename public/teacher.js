@@ -72,12 +72,12 @@ function confirmTeacherVideoDelete(id){confirmTeacherVideosDelete([id])}
 function confirmTeacherVideosDelete(requestedIds){
  const videos=[...new Set(requestedIds)].map(teacherVideo).filter(Boolean);if(!videos.length)return;
  const ids=videos.map(v=>v.id),deleting=new Set(ids);
- openModal(`<h2 id="modal-title">${videos.length===1?'영상을 삭제할까요?':videos.length+'개 영상을 삭제할까요?'}</h2><ol class="delete-video-list">${videos.map(video=>`<li><strong>${esc(video.title)}</strong><small>배정 반: ${videoGroups(video).map(esc).join(' · ')||'미배정'}</small></li>`).join('')}</ol><p class="source-note">풀이로그의 영상·타임라인·즐겨찾기가 삭제돼요. 유튜브 원본은 유지돼요. 나중에 유튜브에서 다시 가져올 수 있어요.</p><p class="form-error" id="video-delete-error" role="alert"></p><div class="modal-actions"><button class="btn" id="video-delete-cancel">취소</button><button class="btn danger" id="video-delete-confirm">${videos.length===1?'영상 삭제':videos.length+'개 영상 삭제'}</button></div>`);
+ openModal(`<h2 id="modal-title">${videos.length===1?'영상을 삭제할까요?':videos.length+'개 영상을 삭제할까요?'}</h2><ol class="delete-video-list">${videos.map(video=>`<li><strong>${esc(video.title)}</strong><small>배정 반: ${videoGroups(video).map(esc).join(' · ')||'미배정'}</small></li>`).join('')}</ol><p class="source-note">풀이로그의 영상·타임라인·즐겨찾기가 삭제돼요. 유튜브 원본은 유지돼요. 삭제한 영상은 자동·수동 가져오기에서도 다시 등록되지 않아요.</p><p class="form-error" id="video-delete-error" role="alert"></p><div class="modal-actions"><button class="btn" id="video-delete-cancel">취소</button><button class="btn danger" id="video-delete-confirm">${videos.length===1?'영상 삭제':videos.length+'개 영상 삭제'}</button></div>`);
  $('#video-delete-cancel').onclick=closeModal;
  $('#video-delete-confirm').onclick=async e=>{
   const button=e.currentTarget;button.disabled=true;$('#video-delete-cancel').disabled=true;
   try{
-   await requestAPI('/api/teacher/videos/delete',{ids,execute:true,exclude_from_import:false});
+   await requestAPI('/api/teacher/videos/delete',{ids,execute:true});
    managedData.videos=managedData.videos.filter(v=>!deleting.has(v.id));for(const id of ids){delete timelineDrafts[id];selectedTeacherVideoIds.delete(id)}if(deleting.has(selectedCourseId))selectedCourseId=null;
    let refreshed=true;try{await refreshTeacher()}catch{refreshed=false}
    closeModal();render();toast(refreshed?`${ids.length}개 영상을 삭제했어요.`:'삭제했어요. 최신 목록은 새로고침해주세요.');
