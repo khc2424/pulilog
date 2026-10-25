@@ -8,6 +8,7 @@ import { LocalStore,SupabaseStore,StoreError } from './store.mjs';
 import { normalizeSchedule } from './schedules.mjs';
 import { canonicalClassName,mergeClassAliases,titleClassAlias } from './classes.mjs';
 import { YouTubeConnection,publicSettings,youtubeYear } from './youtube.mjs';
+import { YouTubeAutoImport } from './youtube-auto.mjs';
 
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'../public');
 const assets=new Map([['/','index.html'],...['index.html','search.js','app.js','accounts.js','teacher.js','workbench.js','production.js','style.css'].map(f=>['/'+f,f])]);
@@ -22,6 +23,7 @@ function cookieToken(req,role){const name=role==='teacher'?'axis_admin':'axis_st
 
 export function createApp(cfg,store,options={}){
  const youtube=new YouTubeConnection(cfg,store,options.youtubeFetch);
+ const youtubeAuto=new YouTubeAutoImport(cfg,store,youtube);
  const oauthCookie=(value,expire=false)=>`pl_youtube_state=${value}; Path=/api/youtube/callback; HttpOnly; SameSite=Lax; Max-Age=${expire?0:600}${cfg.production?'; Secure':''}`;
  const send=(res,status,data,cookie)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8',...(cookie?{'Set-Cookie':cookie}:{})});res.end(JSON.stringify(data))};
  const cookie=(role,token,remember=false,expire=false)=>`${role==='teacher'?'axis_admin':'axis_student'}=${token}; Path=/; HttpOnly; SameSite=Strict${cfg.production?'; Secure':''}${expire?'; Max-Age=0':remember?'; Max-Age=2592000':''}`;
@@ -47,13 +49,17 @@ export function createApp(cfg,store,options={}){
     res.writeHead(303,{Location:cfg.origin+'/?youtube='+outcome+'#settings','Set-Cookie':oauthCookie('',true)});return res.end();
    }
    if(req.method==='GET'&&path==='/healthz'){await store.all('settings',{key:'schema_version'});return send(res,200,{ok:true})}
+   if(req.method==='POST'&&path==='/api/jobs/youtube-import'){
+    check(req.headers.host===new URL(cfg.origin).host,'허용되지 않은 주소예요.',403);
+    return send(res,200,await youtubeAuto.run(req.headers.authorization));
+   }
    if(req.method==='GET'&&path==='/api/status')return send(res,200,{name:'풀이로그',database:cfg.driver,environment:cfg.production?'production':'development',youtube_connected:(await youtube.status()).connected,video_analysis_connected:false,demo_data:false});
    if(req.method==='GET'&&path==='/api/session'){const s=await session(req,'student');return send(res,200,{student:s?{id:s.id,name:s.name,class_name:s.class_name}:null,teacher:!!await session(req,'teacher')})}
    if(req.method==='GET'&&path==='/api/videos'){const s=await requireRole(req);const fav=new Set((await store.all('favorites',{student_id:s.id})).map(f=>f.video_id));return send(res,200,{videos:(await allowedVideos(s)).map(v=>publicVideo(v,fav.has(v.id)))})}
    if(req.method==='GET'&&path==='/api/teacher/state'){
     await requireRole(req,'teacher');const [students,videos,relations,class_info,settings]=await Promise.all(['students','videos','video_classes','classes','settings'].map(t=>store.all(t)));
     const videoDates=settings.find(row=>row.key==='youtube_video_dates')?.value||{};
-    return send(res,200,{students:students.sort((a,b)=>a.id-b.id),classes:class_info.map(c=>c.name).sort(),class_info,settings:publicSettings(settings),youtube:await youtube.status(),videos:videos.sort((a,b)=>b.added_at-a.added_at).map(v=>({...v,youtube_year:youtubeYear(videoDates[v.id]),youtube_published_at:Number.isFinite(Date.parse(videoDates[v.id]))?videoDates[v.id]:null,is_new:Date.now()/1000-v.added_at<604800,classes:relations.filter(r=>r.video_id===v.id).map(r=>r.class_name),has_draft:v.timeline_draft!==null,timeline_draft:v.timeline_draft??v.timeline}))});
+    return send(res,200,{students:students.sort((a,b)=>a.id-b.id),classes:class_info.map(c=>c.name).sort(),class_info,settings:publicSettings(settings),youtube:{...await youtube.status(),auto_import:await youtubeAuto.status()},videos:videos.sort((a,b)=>b.added_at-a.added_at).map(v=>({...v,youtube_year:youtubeYear(videoDates[v.id]),youtube_published_at:Number.isFinite(Date.parse(videoDates[v.id]))?videoDates[v.id]:null,is_new:Date.now()/1000-v.added_at<604800,classes:relations.filter(r=>r.video_id===v.id).map(r=>r.class_name),has_draft:v.timeline_draft!==null,timeline_draft:v.timeline_draft??v.timeline}))});
    }
    if(req.method==='GET'&&assets.has(path)){const file=assets.get(path);const contents=await readFile(resolve(ROOT,file));res.writeHead(200,{'Content-Type':file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8'});return res.end(contents)}
    if(req.method!=='POST')return send(res,404,{error:'없는 페이지예요.'});
@@ -108,6 +114,8 @@ export function createApp(cfg,store,options={}){
     return send(res,200,{deleted:targets.length,kept:videos.length-targets.length,unknown_date:unknown});
    }
    if(path==='/api/teacher/youtube/connect'){const started=await youtube.start(teacherSession);return send(res,200,{url:started.url},oauthCookie(started.state))}
+   if(path==='/api/teacher/youtube/auto-setup')return send(res,200,await youtubeAuto.prepare(d.year??2026));
+   if(path==='/api/teacher/youtube/auto-toggle')return send(res,200,await youtubeAuto.toggle(d.enabled));
    if(path==='/api/teacher/youtube/sync')return send(res,200,await youtube.sync({year:d.year??2026}));
    if(path==='/api/teacher/youtube/disconnect')return send(res,200,await youtube.disconnect());
    if(path==='/api/teacher/classes/merge-aliases')return send(res,200,await mergeClassAliases(store,clean(d.name,60)));

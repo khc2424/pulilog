@@ -94,7 +94,7 @@ export class YouTubeConnection {
   for(const row of await this.store.all('settings'))if(row.key.startsWith('youtube_state_'))await this.store.del('settings',{key:row.key});
   return {revoked};
  }
- async sync({year=2026}={}){
+ async sync({year=2026,newOnly=false}={}){
   if(!Number.isInteger(year)||year<2005||year>2100)fail('가져올 연도를 확인해주세요.');
   const start=Date.parse(`${year}-01-01T00:00:00+09:00`),end=Date.parse(`${year+1}-01-01T00:00:00+09:00`);
   if(this.busy)fail('영상 가져오기가 진행 중이에요. 잠시 후 확인해주세요.');this.busy=true;
@@ -110,7 +110,14 @@ export class YouTubeConnection {
    const existing=new Set((await this.store.all('videos')).map(v=>v.id));const classes=(await this.store.all('classes')).map(c=>c.name);
    const excluded=new Set((await this.store.all('settings',{key:'youtube_excluded_video_ids'}))[0]?.value||[]);
    const dates={...((await this.store.all('settings',{key:'youtube_video_dates'}))[0]?.value||{})};
-   let imported=0,skipped=0,outside_year=0,unknown_date=0,unassigned=0,needs_review=0;const list=[...ids];
+   let imported=0,skipped=0,outside_year=0,unknown_date=0,unassigned=0,needs_review=0;
+   const list=[...ids].filter(id=>{
+    if(!newOnly)return true;
+    if(existing.has(id)||excluded.has(id)){skipped++;return false}
+    const time=Date.parse(dates[id]);
+    if(Number.isFinite(time)&&(time<start||time>=end)){outside_year++;return false}
+    return true;
+   });
    for(let i=0;i<list.length;i+=50){
     const batch=await this.api('videos',{part:'snippet,status',id:list.slice(i,i+50).join(','),maxResults:'50'},access);
     for(const item of batch.items||[]){
