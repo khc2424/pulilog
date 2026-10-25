@@ -81,6 +81,10 @@ test('자동 수집은 과거 누락 영상을 건너뛰고 처리 중인 새 �
   const options={year:2026,newOnly:true,since:'2026-10-25T00:00:00Z'};
   assert.equal((await yt.sync(options)).imported,0);
   assert.equal((await store.all('videos')).length,0);
+  // Repair a prematurely imported lesson without treating it as a permanent deletion.
+  await store.saveVideo({id:'Pending0001',title:'새 강의',added_at:1,published:true,timeline:[],notes:''},[]);
+  assert.equal((await yt.deferProcessingVideos(['Pending0001'])).deferred,1);
+  assert.equal((await store.all('settings',{key:'youtube_excluded_video_ids'})).length,0);
   completed=true;
   assert.equal((await yt.sync(options)).imported,1);
   assert.deepEqual((await store.all('videos')).map(v=>v.id),['Pending0001']);

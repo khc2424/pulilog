@@ -101,6 +101,18 @@ export class YouTubeConnection {
   const result=await this.api('videos',{part:'snippet,status,processingDetails',id:ids.join(','),maxResults:'50'},access);
   return {videos:(result.items||[]).map(item=>({id:item.id,title:item.snippet?.title,published_at:item.snippet?.publishedAt,upload_status:item.status?.uploadStatus||null,processing_status:item.processingDetails?.processingStatus||null,ready:isYouTubeVideoReady(item),excluded:excluded.has(item.id)}))};
  }
+ async deferProcessingVideos(ids){
+  return this.withVideoLock(async()=>{
+   const status=await this.inspectVideos(ids),records=await this.store.all('videos'),favorites=await this.store.all('favorites');
+   const pending=status.videos.filter(item=>item.processing_status==='processing'&&!item.ready).map(item=>item.id).filter(id=>{
+    const video=records.find(v=>v.id===id);
+    return video&&!video.notes&&!video.supplement_needed&&!video.timeline?.length&&!video.timeline_draft?.length&&!favorites.some(f=>f.video_id===id);
+   });
+   // This is an unfinished import, not a teacher deletion: allow retry after processing.
+   if(pending.length)await this.store.deleteVideos(pending);
+   return {deferred:pending.length,ids:pending};
+  });
+ }
  async sync({year=2026,newOnly=false,since=null}={}){
   if(!Number.isInteger(year)||year<2005||year>2100)fail('가져올 연도를 확인해주세요.');
   const start=Date.parse(`${year}-01-01T00:00:00+09:00`),end=Date.parse(`${year+1}-01-01T00:00:00+09:00`);

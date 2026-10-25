@@ -118,6 +118,10 @@ export function createApp(cfg,store,options={}){
     check(Array.isArray(d.ids)&&d.ids.length>0&&d.ids.length<=50&&d.ids.every(id=>typeof id==='string'&&/^[A-Za-z0-9_-]{11}$/.test(id)));
     return send(res,200,await youtube.inspectVideos(d.ids));
    }
+   if(path==='/api/teacher/youtube/defer-processing'){
+    check(Array.isArray(d.ids)&&d.ids.length>0&&d.ids.length<=50&&d.ids.every(id=>typeof id==='string'&&/^[A-Za-z0-9_-]{11}$/.test(id)));
+    return send(res,200,await youtube.deferProcessingVideos(d.ids));
+   }
    if(path==='/api/teacher/youtube/auto-setup')return send(res,200,await youtubeAuto.prepare(d.year??2026));
    if(path==='/api/teacher/youtube/auto-toggle')return send(res,200,await youtubeAuto.toggle(d.enabled));
    if(path==='/api/teacher/youtube/sync')return send(res,200,await youtube.sync({year:d.year??2026}));
