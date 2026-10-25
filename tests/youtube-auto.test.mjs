@@ -54,6 +54,14 @@ test('예약 요청은 새 영상만 가져오고 삭제·숨김·연도 조건�
   const call=auth=>fetch(cfg.origin+'/api/jobs/youtube-import',{method:'POST',headers:auth?{Authorization:auth}:{}});
   assert.equal((await call()).status,401);assert.equal((await call('Bearer 2424')).status,401);
   const response=await call('Bearer '+token);assert.equal(response.status,200);assert.equal((await response.json()).imported,1);
+  const login=await fetch(cfg.origin+'/api/teacher/login',{method:'POST',headers:{'Content-Type':'application/json','X-AXIS-Request':'1',Origin:cfg.origin},body:JSON.stringify({code:'2424'})});
+  const teacherCookie=login.headers.get('set-cookie');
+  const refresh=cookie=>fetch(cfg.origin+'/api/teacher/youtube/refresh',{method:'POST',headers:{'Content-Type':'application/json','X-AXIS-Request':'1',Origin:cfg.origin,...(cookie?{Cookie:cookie}:{})},body:'{}'});
+  assert.equal((await refresh()).status,401);
+  const onRefresh=await refresh(teacherCookie);assert.equal(onRefresh.status,200);assert.equal((await onRefresh.json()).imported,0);
+  assert.equal((await (await refresh(teacherCookie)).json()).skipped,'recent');
+  const teacherState=await (await fetch(cfg.origin+'/api/teacher/state',{headers:{Cookie:teacherCookie}})).json();
+  assert.ok(teacherState.youtube.refresh_import.last_success);
   assert.equal(metadataCalls,1);
   assert.equal((await store.all('videos',{id:'Deleted0001'})).length,0);
   assert.equal((await store.all('videos',{id:'Hidden00001'}))[0].published,false);
