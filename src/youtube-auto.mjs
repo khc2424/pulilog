@@ -31,7 +31,7 @@ begin
   perform vault.update_secret(secret_id, ${quote(token)});
  end if;
 end $pulilog$;
-select cron.schedule('pulilog-youtube-auto-import', '7 */3 * * *', $job$
+select cron.schedule('pulilog-youtube-auto-import', '0 */3 * * *', $job$
  select net.http_post(
   url := ${quote(url)},
   headers := jsonb_build_object('Content-Type','application/json','Authorization','Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'pulilog_youtube_import_token')),

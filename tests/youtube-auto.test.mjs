@@ -14,7 +14,7 @@ test('예약 설정문은 Vault 인증과 고정 작업명을 사용하고 인�
   await assert.rejects(auto.prepare(1900));
   const {sql}=await auto.prepare(2026),token=sql.match(/vault.create_secret\('([^']+)'/)[1];
   assert.match(sql,/cron.schedule\('pulilog-youtube-auto-import'/);
-  assert.ok(sql.includes("'7 */3 * * *'"));
+  assert.ok(sql.includes("'0 */3 * * *'"));
   assert.equal((await auto.status()).interval_minutes,180);
   assert.match(sql,/vault.decrypted_secrets/);
   assert.match(sql,/timeout_milliseconds := 180000/);
