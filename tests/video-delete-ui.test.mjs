@@ -3,6 +3,20 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {runInNewContext} from 'node:vm';
 
+test('영상 행의 빈 공간은 선택하고 버튼·체크박스·텍스트 선택은 별도로 처리한다',async()=>{
+ const source=await readFile(new URL('../public/teacher.js',import.meta.url),'utf8');
+ const action=source.slice(source.indexOf('function bindTeacherVideoRowSelection('),source.indexOf('function bindTeacherPage('));
+ let clicks=0,selection='';
+ const context={window:{getSelection:()=>({toString:()=>selection})}};
+ runInNewContext(action,context);
+ const row={querySelector:()=>({click:()=>{clicks++}})};
+ context.bindTeacherVideoRowSelection(row);
+ row.onclick({target:{closest:()=>null}});assert.equal(clicks,1);
+ row.onclick({target:{closest:()=>({tagName:'BUTTON'})}});assert.equal(clicks,1);
+ row.onclick({target:{closest:()=>({tagName:'INPUT'})}});assert.equal(clicks,1);
+ selection='선택한 제목';row.onclick({target:{closest:()=>null}});assert.equal(clicks,1);
+});
+
 test('영상 삭제는 확인 전 요청하지 않고 취소·실패·성공 상태를 처리한다',async()=>{
  const source=await readFile(new URL('../public/teacher.js',import.meta.url),'utf8');
  const action=source.slice(source.indexOf('function confirmTeacherVideoDelete('),source.indexOf('function timeToSeconds('));
