@@ -15,7 +15,7 @@ const hash=s=>createHash('sha256').update(s).digest('hex');
 const clean=(v,max=300)=>String(v??'').trim().slice(0,max);
 const check=(ok,message='입력 내용을 확인해주세요.',status=400)=>{if(!ok){const e=new Error(message);e.status=status;throw e}};
 const phone=v=>{const p=clean(v).replace(/[^0-9]/g,'');check(/^010\d{8}$/.test(p),'휴대폰 번호 11자리를 입력해주세요.');return p};
-function publicVideo(v,favorite=false){return Object.fromEntries([...['id','title','class_name','book','subject','unit','added_at','timeline'].map(k=>[k,v[k]]),['favorite',favorite],['is_new',Date.now()/1000-v.added_at<604800]])}
+function publicVideo(v,favorite=false){return Object.fromEntries([...['id','title','class_name','book','subject','unit','added_at','timeline','youtube_published_at'].map(k=>[k,v[k]]),['favorite',favorite],['is_new',Date.now()/1000-v.added_at<604800]])}
 function cleanRows(rows){check(Array.isArray(rows)&&rows.length<=500);return rows.map(r=>{check(Array.isArray(r)&&r.length===5);const [n,p,t,,sec]=r;check(clean(n)&&clean(t)&&Number.isInteger(sec)&&sec>=0&&sec<=86400&&Number.isInteger(Number(p||0))&&Number(p||0)>=0&&Number(p||0)<=10000);const label=sec>=3600?`${Math.floor(sec/3600)}:${String(Math.floor(sec%3600/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`:`${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`;return[clean(n,30),Number(p||0),clean(t,200),label,sec]})}
 async function body(req){let n=0;const chunks=[];for await(const c of req){n+=c.length;check(n<=100000,'입력 내용이 너무 길어요.',413);chunks.push(c)}let d;try{d=JSON.parse(Buffer.concat(chunks).toString()||'{}')}catch{check(false,'입력 형식을 확인해주세요.')}check(d&&typeof d==='object'&&!Array.isArray(d));return d}
 function cookieToken(req,role){const name=role==='teacher'?'axis_admin':'axis_student';return (req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(name+'='))?.slice(name.length+1)||''}
@@ -33,7 +33,7 @@ export function createApp(cfg,store,options={}){
   const [relations,videos,settings]=await Promise.all([store.all('video_classes',{class_name:s.class_name}),store.all('videos'),store.all('settings',{key:'youtube_video_dates'})]);
   const ids=new Set(relations.map(r=>r.video_id)),dates=settings[0]?.value||{};
   const publishedTime=v=>{const time=Date.parse(dates[v.id]);return Number.isFinite(time)?time:0};
-  return videos.filter(v=>v.published&&ids.has(v.id)).sort((a,b)=>publishedTime(b)-publishedTime(a)||b.added_at-a.added_at||a.id.localeCompare(b.id));
+  return videos.filter(v=>v.published&&ids.has(v.id)).sort((a,b)=>publishedTime(b)-publishedTime(a)||b.added_at-a.added_at||a.id.localeCompare(b.id)).map(v=>({...v,youtube_published_at:Number.isFinite(Date.parse(dates[v.id]))?dates[v.id]:null}));
  }
  return http.createServer(async(req,res)=>{
   res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('X-Frame-Options','DENY');res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=()');
