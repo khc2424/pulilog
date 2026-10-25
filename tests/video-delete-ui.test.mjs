@@ -9,7 +9,7 @@ test('영상 삭제는 확인 전 요청하지 않고 취소·실패·성공 상
  const nodes=Object.fromEntries(['video-delete-cancel','video-delete-confirm','video-delete-error'].map(id=>['#'+id,{disabled:false,textContent:'',checked:true}]));
  let html='',closed=0,renders=0,fail=false;const calls=[];
  const context={
-  selectedCourseId:'EeNDcFziKIQ',timelineDrafts:{EeNDcFziKIQ:[1]},managedData:{videos:[{id:'EeNDcFziKIQ',title:'삭제 확인용',classes:['A반']}]},
+  selectedTeacherVideoIds:new Set(),selectedCourseId:'EeNDcFziKIQ',timelineDrafts:{EeNDcFziKIQ:[1]},managedData:{videos:[{id:'EeNDcFziKIQ',title:'삭제 확인용',classes:['A반']}]},
   teacherVideo:id=>context.managedData.videos.find(v=>v.id===id),videoGroups:v=>v.classes,esc:String,
   openModal:value=>{html=value},closeModal:()=>{closed++},$:id=>nodes[id],render:()=>{renders++},toast:()=>{},refreshTeacher:async()=>{},
   requestAPI:async(path,body)=>{calls.push({path,body:JSON.parse(JSON.stringify(body))});if(fail)throw new Error('연결 확인')}
@@ -24,4 +24,13 @@ test('영상 삭제는 확인 전 요청하지 않고 취소·실패·성공 상
  fail=false;await nodes['#video-delete-confirm'].onclick({currentTarget:nodes['#video-delete-confirm']});
  assert.deepEqual(calls.at(-1),{path:'/api/teacher/videos/delete',body:{ids:['EeNDcFziKIQ'],execute:true,exclude_from_import:false}});
  assert.equal(context.managedData.videos.length,0);assert.equal(context.selectedCourseId,null);assert.equal(context.timelineDrafts.EeNDcFziKIQ,undefined);assert.equal(renders,1);
+ context.managedData.videos=[{id:'a',title:'첫 강의',classes:['A반']},{id:'b',title:'둘째 강의',classes:['B반']},{id:'c',title:'유지 강의',classes:[]}];
+ context.selectedTeacherVideoIds.add('a');context.selectedTeacherVideoIds.add('b');
+ context.confirmTeacherVideosDelete(['a','b','a','없는영상']);
+ assert.ok(html.includes('2개 영상을 삭제할까요?'));assert.ok(html.includes('첫 강의'));assert.ok(html.includes('둘째 강의'));assert.ok(!html.includes('유지 강의'));
+ fail=true;await nodes['#video-delete-confirm'].onclick({currentTarget:nodes['#video-delete-confirm']});
+ assert.equal(context.managedData.videos.length,3);assert.equal(context.selectedTeacherVideoIds.size,2);
+ fail=false;await nodes['#video-delete-confirm'].onclick({currentTarget:nodes['#video-delete-confirm']});
+ assert.deepEqual(calls.at(-1).body,{ids:['a','b'],execute:true,exclude_from_import:false});
+ assert.equal(context.managedData.videos.length,1);assert.equal(context.managedData.videos[0].id,'c');assert.equal(context.selectedTeacherVideoIds.size,0);
 });

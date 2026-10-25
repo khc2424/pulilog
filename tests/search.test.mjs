@@ -6,7 +6,7 @@ import { runInNewContext } from 'node:vm';
 test('강의 관리에서 2026년을 기본 표시하고 전체·날짜 미확인으로 전환한다',async()=>{
  const source=await readFile(new URL('../public/teacher.js',import.meta.url),'utf8');
  const view=source.slice(source.indexOf('function teacherCourses(){'),source.indexOf('function teacherCourseDetail('));
- const context={page:'courses',teacherCourseClasses:new Set(),teacherCourseMissing:new Set(),selectedCourseId:null,teacherCourseSearch:'',teacherCourseFilter:'all',teacherCourseYear:null,normalizeSearch:s=>s,heading:()=>'',esc:String,videoGroups:()=>[],badge:String,tlabel:()=>'',classificationMissing:()=>false,
+ const context={selectedTeacherVideoIds:new Set(),page:'courses',teacherCourseClasses:new Set(),teacherCourseMissing:new Set(),selectedCourseId:null,teacherCourseSearch:'',teacherCourseFilter:'all',teacherCourseYear:null,normalizeSearch:s=>s,heading:()=>'',esc:String,videoGroups:()=>[],badge:String,tlabel:()=>'',classificationMissing:()=>false,
   managedData:{videos:[
    {id:'a',title:'올해영상',youtube_year:2026,timeline:[]},
    {id:'b',title:'지난영상',youtube_year:2025,timeline:[]},
@@ -28,6 +28,7 @@ test('강의 관리에서 2026년을 기본 표시하고 전체·날짜 미확�
  ];
  html=context.teacherCourses();assert.ok(html.includes('분류 완료 영상 2개'));assert.ok(!html.includes('A반미완료'));
  context.teacherCourseClasses.add('A반');html=context.teacherCourses();assert.ok(html.includes('분류 완료 영상 1개'));assert.ok(html.includes('A반완료'));assert.ok(!html.includes('B반완료'));assert.ok(html.includes('2026. 01. 02.'));assert.ok(html.includes('유튜브 게시일'));
+ context.selectedTeacherVideoIds.add('a');context.selectedTeacherVideoIds.add('b');html=context.teacherCourses();assert.ok(context.selectedTeacherVideoIds.has('a'));assert.ok(!context.selectedTeacherVideoIds.has('b'));assert.ok(html.includes('1개 선택'));assert.ok(html.includes('aria-label="현재 목록 전체 선택" checked'));
  context.teacherCourseFilter='missing';html=context.teacherCourses();assert.ok(html.includes('A반미완료'));assert.ok(!html.includes('A반완료'));assert.ok(!html.includes('data-course-class '));assert.ok(html.includes('data-course-missing'));
  context.teacherCourseFilter='all';html=context.teacherCourses();assert.ok(html.includes('B반완료'));assert.equal((html.match(/data-t-filter=/g)||[]).length,5);
  context.teacherCourseFilter='classified';context.teacherCourseClasses.add('B반');
