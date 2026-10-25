@@ -19,8 +19,8 @@ test('유튜브 OAuth 상태 검증·토큰 암호화·일부 공개 가져오�
   if(url.pathname.endsWith('/channels'))return Response.json({items:[{id:'channel',snippet:{title:'수업 채널'},contentDetails:{relatedPlaylists:{uploads:'uploads'}}}]});
   if(url.pathname.endsWith('/playlistItems'))return Response.json(url.searchParams.get('pageToken')?{items:[{contentDetails:{videoId:'Private0001'}}]}:{items:[{contentDetails:{videoId:'EeNDcFziKIQ'}}],nextPageToken:'page2'});
   if(url.pathname.endsWith('/videos'))return Response.json({items:[
-   {id:'EeNDcFziKIQ',snippet:{publishedAt:'2026-04-01T00:00:00Z',channelId:'channel',title:'고1B2 쎈 공통수학1 [2-7] 함수 #1'},status:{privacyStatus:'unlisted',embeddable:true}},
-   {id:'Private0001',snippet:{publishedAt:'2026-04-01T00:00:00Z',channelId:'channel',title:'비공개'},status:{privacyStatus:'private',embeddable:true}}
+   {id:'EeNDcFziKIQ',snippet:{publishedAt:'2026-04-01T00:00:00Z',channelId:'channel',title:'고1B2 쎈 공통수학1 [2-7] 함수 #1'},status:{uploadStatus:'processed',privacyStatus:'unlisted',embeddable:true}},
+   {id:'Private0001',snippet:{publishedAt:'2026-04-01T00:00:00Z',channelId:'channel',title:'비공개'},status:{uploadStatus:'processed',privacyStatus:'private',embeddable:true}}
   ]});
   if(url.pathname==='/revoke')return new Response('',{status:200});
   throw new Error('Unexpected endpoint');
@@ -64,6 +64,30 @@ test('유튜브 OAuth 상태 검증·토큰 암호화·일부 공개 가져오�
  }finally{store.close()}
 });
 
+test('자동 수집은 과거 누락 영상을 건너뛰고 처리 중인 새 영상은 완료 후 다시 가져온다',async()=>{
+ const store=new LocalStore(':memory:'),cfg={origin:'https://example.com',sessionSecret:'test'};
+ let completed=false;
+ const yt=new YouTubeConnection(cfg,store,async raw=>{
+  const url=new URL(raw);
+  if(url.pathname.endsWith('/playlistItems'))return Response.json({items:['OldGap00001','Pending0001'].map(videoId=>({contentDetails:{videoId}}))});
+  assert.equal(url.searchParams.get('part'),'snippet,status,processingDetails');
+  return Response.json({items:[
+   {id:'OldGap00001',snippet:{title:'예전 누락 영상',channelId:'channel',publishedAt:'2026-01-14T00:00:00Z'},status:{uploadStatus:'processed',privacyStatus:'unlisted',embeddable:true}},
+   {id:'Pending0001',snippet:{title:'새 강의',channelId:'channel',publishedAt:'2026-10-25T01:00:00Z'},status:{uploadStatus:completed?'processed':'uploaded',privacyStatus:'unlisted',embeddable:true},processingDetails:{processingStatus:completed?'succeeded':'processing'}}
+  ]});
+ });
+ try{
+  await yt.save({access_token:'test',expires:Date.now()/1000+3600,channel:{id:'channel',uploads:'uploads'}});
+  const options={year:2026,newOnly:true,since:'2026-10-25T00:00:00Z'};
+  assert.equal((await yt.sync(options)).imported,0);
+  assert.equal((await store.all('videos')).length,0);
+  completed=true;
+  assert.equal((await yt.sync(options)).imported,1);
+  assert.deepEqual((await store.all('videos')).map(v=>v.id),['Pending0001']);
+  assert.equal((await yt.sync(options)).imported,0);
+ }finally{store.close()}
+});
+
 test('반 이름 공백과 긴 이름 우선 매칭, 교재 이름 보존',()=>{
  assert.deepEqual(classifyYouTubeTitle('고1 B2 개념 원리 공통수학1 [1-2] 다항식 #2',['고1B2']),{classes:['고1B2'],class_name:'고1B2',book:'개념 원리',subject:'공통수학1',unit:'다항식'});
  assert.equal(classifyYouTubeTitle('고1B20 쎈 대수 함수 #1',['고1B2']).classes.length,0);
@@ -73,7 +97,7 @@ test('반 이름 공백과 긴 이름 우선 매칭, 교재 이름 보존',()=>{
 test('1,000개 업로드를 페이지 순서와 무관하게 2026년만 가져오고 불규칙 제목은 검토 대상으로 둔다',async()=>{
  const store=new LocalStore(':memory:');
  const cfg={origin:'https://example.com',sessionSecret:'s'.repeat(32)};
- const items=Array.from({length:1000},(_,i)=>({id:'V'+String(i).padStart(10,'0'),snippet:{channelId:'channel',publishedAt:'2025-06-01T00:00:00Z',title:'고1B2 쎈 공통수학1 [2-7] 함수 #1'},status:{privacyStatus:'unlisted',embeddable:true}}));
+ const items=Array.from({length:1000},(_,i)=>({id:'V'+String(i).padStart(10,'0'),snippet:{channelId:'channel',publishedAt:'2025-06-01T00:00:00Z',title:'고1B2 쎈 공통수학1 [2-7] 함수 #1'},status:{uploadStatus:'processed',privacyStatus:'unlisted',embeddable:true}}));
  items[0].snippet.publishedAt='2025-12-31T15:00:00Z';
  items[1].snippet.publishedAt='2026-12-31T14:59:59Z';
  items[2].snippet.publishedAt='2026-12-31T15:00:00Z';

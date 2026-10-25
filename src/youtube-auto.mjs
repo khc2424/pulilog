@@ -15,7 +15,7 @@ export class YouTubeAutoImport {
   if(!(await this.youtube.status()).connected)invalid('Google 계정을 먼저 연결해주세요.');
   if(this.busy||this.youtube.busy)invalid('영상 가져오기가 끝난 뒤 설정해주세요.',409);
   const previous=await this.read(),token=previous?.token_encrypted?this.youtube.open(previous.token_encrypted):randomBytes(32).toString('base64url');
-  await this.save({...previous,enabled:true,year,token_hash:hash(token),token_encrypted:this.youtube.seal(token),last_checked:previous?.last_checked||null,last_success:previous?.last_success||null,last_imported:previous?.last_imported||0,error:previous?.error||''});
+  await this.save({...previous,enabled:true,year,import_since:previous?.import_since||new Date().toISOString(),token_hash:hash(token),token_encrypted:this.youtube.seal(token),last_checked:previous?.last_checked||null,last_success:previous?.last_success||null,last_imported:previous?.last_imported||0,error:previous?.error||''});
   const url=this.cfg.origin+'/api/jobs/youtube-import';
   // The reusable credential stays in Vault; the cron command contains only its name.
   const sql=`begin;
@@ -58,9 +58,11 @@ commit;`;
   if(state.last_checked&&Date.now()-Date.parse(state.last_checked)<8*60*1000)return {skipped:'recent'};
   this.busy=true;
   const checked=new Date().toISOString();
+  // Preserve the baseline across runs so videos still processing are retried later.
+  state.import_since ||= new Date(Math.floor((Date.parse(state.last_checked||checked)+9*3600000)/86400000)*86400000-9*3600000).toISOString();
   try{
    await this.save({...state,last_checked:checked,error:''});
-   const result=await this.youtube.sync({year:state.year,newOnly:true});
+   const result=await this.youtube.sync({year:state.year,newOnly:true,since:state.import_since});
    await this.save({...state,last_checked:checked,last_success:new Date().toISOString(),last_imported:result.imported,error:''});
    return result;
   }catch(error){

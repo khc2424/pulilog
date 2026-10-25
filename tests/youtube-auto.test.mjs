@@ -38,7 +38,7 @@ test('예약 요청은 새 영상만 가져오고 삭제·숨김·연도 조건�
   if(url.pathname.endsWith('/playlistItems'))return Response.json({items:['NewVideo001','Deleted0001','Hidden00001','Older000001'].map(videoId=>({contentDetails:{videoId}}))});
   if(url.pathname.endsWith('/videos')){
    metadataCalls++;assert.equal(url.searchParams.get('id'),'NewVideo001');
-   return Response.json({items:[{id:'NewVideo001',snippet:{publishedAt:'2026-10-25T00:00:00Z',channelId:'channel',title:'고1B2 쎈 공통수학1 [2-7] 함수 #1'},status:{privacyStatus:'unlisted',embeddable:true}}]});
+   return Response.json({items:[{id:'NewVideo001',snippet:{publishedAt:new Date(Date.now()+1000).toISOString(),channelId:'channel',title:'고1B2 쎈 공통수학1 [2-7] 함수 #1'},status:{uploadStatus:'processed',privacyStatus:'unlisted',embeddable:true}}]});
   }
   throw new Error('Unexpected URL');
  };

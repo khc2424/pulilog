@@ -6,6 +6,7 @@ const scope='https://www.googleapis.com/auth/youtube.readonly';
 const digest=value=>createHash('sha256').update(value).digest('hex');
 const fail=message=>{throw Object.assign(new Error(message),{status:400})};
 export const publicSettings=rows=>Object.fromEntries(rows.filter(r=>!r.key.startsWith('youtube_')).map(r=>[r.key,r.value]));
+export const isYouTubeVideoReady=item=>item.status?.uploadStatus==='processed'&&(!item.processingDetails?.processingStatus||['succeeded','terminated'].includes(item.processingDetails.processingStatus));
 export const youtubeYear=value=>{const time=Date.parse(value);return Number.isFinite(time)?new Date(time+9*3600000).getUTCFullYear():null};
 
 export function classifyYouTubeTitle(title,classes){
@@ -94,7 +95,13 @@ export class YouTubeConnection {
   for(const row of await this.store.all('settings'))if(row.key.startsWith('youtube_state_'))await this.store.del('settings',{key:row.key});
   return {revoked};
  }
- async sync({year=2026,newOnly=false}={}){
+ async inspectVideos(ids){
+  const data=await this.read();if(!data)fail('Google 계정을 먼저 연결해주세요.');
+  const access=await this.access(data),excluded=new Set((await this.store.all('settings',{key:'youtube_excluded_video_ids'}))[0]?.value||[]);
+  const result=await this.api('videos',{part:'snippet,status,processingDetails',id:ids.join(','),maxResults:'50'},access);
+  return {videos:(result.items||[]).map(item=>({id:item.id,title:item.snippet?.title,published_at:item.snippet?.publishedAt,upload_status:item.status?.uploadStatus||null,processing_status:item.processingDetails?.processingStatus||null,ready:isYouTubeVideoReady(item),excluded:excluded.has(item.id)}))};
+ }
+ async sync({year=2026,newOnly=false,since=null}={}){
   if(!Number.isInteger(year)||year<2005||year>2100)fail('가져올 연도를 확인해주세요.');
   const start=Date.parse(`${year}-01-01T00:00:00+09:00`),end=Date.parse(`${year+1}-01-01T00:00:00+09:00`);
   if(this.busy)fail('영상 가져오기가 진행 중이에요. 잠시 후 확인해주세요.');this.busy=true;
@@ -119,12 +126,14 @@ export class YouTubeConnection {
     return true;
    });
    for(let i=0;i<list.length;i+=50){
-    const batch=await this.api('videos',{part:'snippet,status',id:list.slice(i,i+50).join(','),maxResults:'50'},access);
+    const batch=await this.api('videos',{part:'snippet,status,processingDetails',id:list.slice(i,i+50).join(','),maxResults:'50'},access);
     for(const item of batch.items||[]){
      const publishedAt=Date.parse(item.snippet?.publishedAt);
      if(Number.isFinite(publishedAt))dates[item.id]=item.snippet.publishedAt;
      if(!Number.isFinite(publishedAt)){unknown_date++;continue}
      if(publishedAt<start||publishedAt>=end){outside_year++;continue}
+     if(newOnly&&since&&publishedAt<Date.parse(since)){skipped++;continue}
+     if(!isYouTubeVideoReady(item)){skipped++;continue}
      if(existing.has(item.id)||excluded.has(item.id)||item.snippet?.channelId!==data.channel.id||!['public','unlisted'].includes(item.status?.privacyStatus)||!item.status?.embeddable){skipped++;continue}
      const title=String(item.snippet.title).slice(0,300),parsed=classifyYouTubeTitle(title,classes);
      await this.store.saveVideo({id:item.id,title,...parsed,added_at:Date.now()/1000,timeline:[],timeline_draft:null,reviewed:false,published:true,notes:'',supplement_needed:false},parsed.classes);
