@@ -7,7 +7,7 @@ async function requestAPI(path, body){
  const response=await fetch(path,{method:body===undefined?'GET':'POST',credentials:'same-origin',
   headers:body===undefined?{}:{'Content-Type':'application/json','X-AXIS-Request':'1'},
   ...(body===undefined?{}:{body:JSON.stringify(body)})});
- let result;try{result=await response.json()}catch{throw new Error('앱 서버에 연결하지 못했어요. server.py로 실행해주세요.')}
+ let result;try{result=await response.json()}catch{throw new Error('서버에 연결하지 못했어요. 잠시 후 다시 시도해주세요.')}
  if(!response.ok){const error=new Error(result.error||'잠시 후 다시 시도해주세요.');error.status=response.status;throw error}
  return result;
 }
@@ -55,7 +55,6 @@ function renderApplication(){
 render=renderApplication;
 
 function bindLogin(teacher){
- $('#fill-demo-phone')?.addEventListener('click',()=>{$('#login-identity').value='01000000009';$('#login-identity').focus()});
  $('#account-login').onsubmit=async e=>{
   e.preventDefault();const button=$('#login-submit');button.disabled=true;$('#login-error').textContent='';
   try{
@@ -89,7 +88,7 @@ function parseCourseTitle(raw){
 }
 function manageCourse(id=null){
  const v=managedData.videos.find(v=>v.id===id)||{id:'',title:'',class_name:'고1 B2',book:'',subject:'',unit:''};
- openModal(`<h2 id="modal-title">${id?'강의 정보 수정':'강의 등록'}</h2><p class="subtitle">제목을 입력하면 반·교재·과목·단원을 제안해요. 저장 전에 확인해주세요.</p><form id="managed-video-form"><div class="field"><label for="course-url">유튜브 링크</label><input id="course-url" type="url" required ${id?'readonly':''} value="${v.id?'https://youtu.be/'+esc(v.id):''}" placeholder="https://youtu.be/..."></div><div class="field" style="margin-top:15px"><label for="course-title">영상 제목</label><input id="course-title" required maxlength="300" value="${esc(v.title)}" placeholder="고1B2 쎈 공통수학1 [2-7] 함수 #1"></div><button type="button" id="parse-title" class="text-link" style="margin:8px 0 15px">제목에서 분류 채우기 →</button><div class="form-grid">${[['class_name','배정 반'],['book','교재'],['subject','과목'],['unit','단원']].map(([key,label])=>`<div class="field"><label for="course-${key}">${label}</label><input required id="course-${key}" value="${esc(v[key])}"></div>`).join('')}</div><p class="form-error" id="course-error" role="alert"></p><p class="source-note">링크를 직접 등록하는 기능이에요. 유튜브 채널 자동 동기화는 아직 연결하지 않았어요.</p><div class="modal-actions"><button type="submit" class="btn primary">저장</button></div></form>`);
+ openModal(`<h2 id="modal-title">${id?'강의 정보 수정':'강의 등록'}</h2><p class="subtitle">제목을 입력하면 반·교재·과목·단원을 제안해요. 저장 전에 확인해주세요.</p><form id="managed-video-form"><div class="field"><label for="course-url">유튜브 링크</label><input id="course-url" type="url" required ${id?'readonly':''} value="${v.id?'https://youtu.be/'+esc(v.id):''}" placeholder="https://youtu.be/..."></div><div class="field" style="margin-top:15px"><label for="course-title">영상 제목</label><input id="course-title" required maxlength="300" value="${esc(v.title)}" placeholder="고1B2 쎈 공통수학1 [2-7] 함수 #1"></div><button type="button" id="parse-title" class="text-link" style="margin:8px 0 15px">제목에서 분류 채우기 →</button><div class="form-grid">${[['class_name','배정 반'],['book','교재'],['subject','과목'],['unit','단원']].map(([key,label])=>`<div class="field"><label for="course-${key}">${label}</label><input required id="course-${key}" value="${esc(v[key])}"></div>`).join('')}</div><p class="form-error" id="course-error" role="alert"></p><p class="source-note">유튜브 링크와 배정 반을 확인한 뒤 저장해주세요.</p><div class="modal-actions"><button type="submit" class="btn primary">저장</button></div></form>`);
  $('#parse-title').onclick=()=>{const parsed=parseCourseTitle($('#course-title').value);if(!parsed){toast('예시 제목 형식인지 확인하고 직접 분류를 입력해주세요.');return}for(const[k,value]of Object.entries(parsed))$('#course-'+k).value=value;toast('제목에서 분류를 채웠어요. 확인 후 저장해주세요.')};
  $('#managed-video-form').onsubmit=async e=>{e.preventDefault();const vid=youtubeId($('#course-url').value);if(!vid){$('#course-error').textContent='유튜브 링크를 확인해주세요.';return}try{await requestAPI('/api/teacher/video',{id:vid,title:$('#course-title').value,...Object.fromEntries(['class_name','book','subject','unit'].map(k=>[k,$('#course-'+k).value]))});await refreshTeacher();closeModal();render();toast('강의와 배정 반을 저장했어요.')}catch(error){$('#course-error').textContent=error.message}};
 }

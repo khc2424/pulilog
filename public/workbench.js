@@ -15,7 +15,7 @@ function renderTeacherPage(){
  const map={overview:teacherOverview,courses:teacherCourses,students:teacherGroups,analysis:teacherAnalysis,curriculum:teacherCurriculum,settings:teacherSettings,planning:teacherCurriculum};
  const html=(map[page]||teacherOverview)();queueMicrotask(()=>{bindTeacherPage();bindWorkbench()});return html;
 }
-function teacherCurriculum(){return `<div class="notice" style="margin-bottom:24px">커리큘럼은 이후에 수정할 예정이에요. 아래 일정은 기존 설계 데모예요.</div>${curriculum()}`}
+function teacherCurriculum(){return heading('','커리큘럼','')+`<section class="card"><h2>커리큘럼 준비 중</h2><p class="subtitle">자동 커리큘럼 기능은 준비 중이에요.</p></section>`}
 const classNameKey=value=>String(value??'').replace(/\s/g,'').toUpperCase();
 const weekdayNames=['월','화','수','목','금','토','일'];
 const legacyScheduleDays={MWF:[1,3,5],TTS:[2,4,6],MW:[1,3],TT:[2,4]};
