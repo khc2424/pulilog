@@ -5,14 +5,16 @@ import { resolve,dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from './config.mjs';
 import { LocalStore,SupabaseStore,StoreError } from './store.mjs';
-import { normalizeSchedule } from './schedules.mjs';
+import { cleanCurriculum,buildCurriculum,curriculumKey,koreaToday } from './curriculum.mjs';
+import { summarizeTeachingStyles } from './teaching-style.mjs';
+import { normalizeSchedule,daysForSchedule } from './schedules.mjs';
 import { canonicalClassName,mergeClassAliases,titleClassAlias } from './classes.mjs';
 import { YouTubeConnection,publicSettings,youtubeYear } from './youtube.mjs';
 import { TimelineAI,timelineFingerprint,parseCaptions } from './timeline-ai.mjs';
 import { YouTubeAutoImport } from './youtube-auto.mjs';
 
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'../public');
-const assets=new Map([['/','index.html'],...['index.html','search.js','app.js','accounts.js','teacher.js','workbench.js','production.js','timeline-ai.js','style.css'].map(f=>['/'+f,f])]);
+const assets=new Map([['/','index.html'],...['index.html','search.js','app.js','accounts.js','teacher.js','workbench.js','production.js','timeline-ai.js','curriculum.js','style.css'].map(f=>['/'+f,f])]);
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const clean=(v,max=300)=>String(v??'').trim().slice(0,max);
 const check=(ok,message='입력 내용을 확인해주세요.',status=400)=>{if(!ok){const e=new Error(message);e.status=status;throw e}};
@@ -61,7 +63,9 @@ export function createApp(cfg,store,options={}){
    if(req.method==='GET'&&path==='/api/teacher/state'){
     await requireRole(req,'teacher');const [students,videos,relations,class_info,settings]=await Promise.all(['students','videos','video_classes','classes','settings'].map(t=>store.all(t)));
     const videoDates=settings.find(row=>row.key==='youtube_video_dates')?.value||{};
-    return send(res,200,{students:students.sort((a,b)=>a.id-b.id),classes:class_info.map(c=>c.name).sort(),class_info,settings:publicSettings(settings),youtube:{...await youtube.status(),auto_import:await youtubeAuto.status()},ai:timelineAI.status(),videos:videos.sort((a,b)=>b.added_at-a.added_at).map(v=>({...v,ai_analysis:settings.find(row=>row.key==='youtube_timeline_analysis_'+v.id)?.value||null,youtube_year:youtubeYear(videoDates[v.id]),youtube_published_at:Number.isFinite(Date.parse(videoDates[v.id]))?videoDates[v.id]:null,is_new:Date.now()/1000-v.added_at<604800,classes:relations.filter(r=>r.video_id===v.id).map(r=>r.class_name),has_draft:v.timeline_draft!==null,timeline_draft:v.timeline_draft??v.timeline}))});
+    const curricula=settings.filter(row=>row.key.startsWith('youtube_curriculum_')).map(row=>({...row.value,calculated:buildCurriculum(row.value,daysForSchedule(class_info.find(c=>c.name===row.value.class_name)?.schedule))}));
+    const teachingStyles=summarizeTeachingStyles(settings.find(row=>row.key==='youtube_teaching_style_observations')?.value||[]);
+    return send(res,200,{curricula,teaching_styles:teachingStyles,students:students.sort((a,b)=>a.id-b.id),classes:class_info.map(c=>c.name).sort(),class_info,settings:publicSettings(settings),youtube:{...await youtube.status(),auto_import:await youtubeAuto.status()},ai:timelineAI.status(),videos:videos.sort((a,b)=>b.added_at-a.added_at).map(v=>({...v,ai_analysis:settings.find(row=>row.key==='youtube_timeline_analysis_'+v.id)?.value||null,youtube_year:youtubeYear(videoDates[v.id]),youtube_published_at:Number.isFinite(Date.parse(videoDates[v.id]))?videoDates[v.id]:null,is_new:Date.now()/1000-v.added_at<604800,classes:relations.filter(r=>r.video_id===v.id).map(r=>r.class_name),has_draft:v.timeline_draft!==null,timeline_draft:v.timeline_draft??v.timeline}))});
    }
    if(req.method==='GET'&&assets.has(path)){const file=assets.get(path);const contents=await readFile(resolve(ROOT,file));res.writeHead(200,{'Content-Type':file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8'});return res.end(contents)}
    if(req.method!=='POST')return send(res,404,{error:'없는 페이지예요.'});
@@ -116,6 +120,24 @@ export function createApp(cfg,store,options={}){
     return send(res,200,{deleted:targets.length,kept:videos.length-targets.length,unknown_date:unknown});
    }
    if(path==='/api/teacher/youtube/connect'){const started=await youtube.start(teacherSession,{captions:d.captions===true});return send(res,200,{url:started.url},oauthCookie(started.state))}
+   if(path==='/api/teacher/curriculum/preview'||path==='/api/teacher/curriculum/save'){
+    const classes=await store.all('classes'),plan=cleanCurriculum(d,classes.map(c=>c.name));
+    const calculated=buildCurriculum(plan,daysForSchedule(classes.find(c=>c.name===plan.class_name)?.schedule));
+    if(path.endsWith('/preview'))return send(res,200,{plan,calculated});
+    const key=curriculumKey(plan.class_name),old=(await store.all('settings',{key}))[0]?.value;
+    check(Number(d.revision||0)===Number(old?.revision||0),'다른 화면에서 계획이 변경됐어요. 새로고침 후 다시 저장해주세요.',412);
+    const saved={...plan,revision:(old?.revision||0)+1,updated_at:new Date().toISOString(),history:[...(old?.history||[]),{at:new Date().toISOString(),action:'계획 저장'}].slice(-50)};
+    await store.put('settings',{key,value:saved});return send(res,200,{plan:saved,calculated});
+   }
+   if(path==='/api/teacher/curriculum/progress'){
+    const key=curriculumKey(clean(d.class_name,60)),old=(await store.all('settings',{key}))[0]?.value;check(old,'먼저 반의 커리큘럼을 저장해주세요.',404);
+    check(Number(d.revision)===old.revision,'다른 화면에서 계획이 변경됐어요. 새로고침 후 다시 기록해주세요.',412);
+    check(old.topics.some(t=>t.id===d.topic_id),'단원을 선택해주세요.');
+    const updated={...old,topics:old.topics.map(t=>t.id===d.topic_id?{...t,done_minutes:Number(d.done_minutes)}:t)};
+    const plan=cleanCurriculum(updated,(await store.all('classes')).map(c=>c.name)),note=clean(d.note,500);
+    const saved={...plan,revision:old.revision+1,updated_at:new Date().toISOString(),history:[...(old.history||[]),{at:new Date().toISOString(),action:'진도 수정',topic_id:d.topic_id,done_minutes:Number(d.done_minutes),note}].slice(-50)};
+    await store.put('settings',{key,value:saved});return send(res,200,{ok:true});
+   }
    if(path==='/api/teacher/timeline/captions'){
     const id=clean(d.id,11);check((await store.all('videos',{id})).length,'영상을 찾을 수 없어요.',404);
     const caption=await youtube.downloadCaptions(id),cues=parseCaptions(caption.text);

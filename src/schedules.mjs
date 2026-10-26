@@ -7,3 +7,5 @@ export function normalizeSchedule(input){
  const sorted=[...new Set(days)].sort((a,b)=>a-b);if(!sorted.length)return '';
  return Object.entries(legacy).find(([,value])=>value.join(',')===sorted.join(','))?.[0]||'days:'+sorted.join(',');
 }
+
+export const daysForSchedule=value=>legacy[value]||(/^days:[1-7](,[1-7]){0,6}$/.test(value||'')?value.slice(5).split(',').map(Number):[]);
