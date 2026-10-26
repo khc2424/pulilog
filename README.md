@@ -12,7 +12,7 @@
 - 선생님 전용 특이사항·보충 필요 기록.
 - 로컬 SQLite 및 Supabase 저장 연결, 배포 설정과 GitHub 자동 검사.
 
-유튜브 자동 가져오기, 영상 AI 분석, PDF 등록·분석, 커리큘럼 자동 생성은 다음 개발 단계입니다. 해당 기능이 연결된 것처럼 샘플 결과를 표시하지 않습니다. 운영 버전은 가상 학생·강의를 자동 생성하지 않습니다.
+유튜브 자동 가져오기는 연결되어 있습니다. 자막 기반 Claude 타임라인 초안 생성은 ANTHROPIC_API_KEY 설정 후 사용할 수 있습니다. 수업 스타일·속도 분석, PDF 등록·분석, 커리큘럼 자동 생성은 다음 개발 단계입니다. 해당 기능이 연결된 것처럼 샘플 결과를 표시하지 않습니다. 운영 버전은 가상 학생·강의를 자동 생성하지 않습니다.
 
 ## 로컬 실행
 
@@ -72,3 +72,17 @@ npm test
 ```
 
 테스트는 격리된 임시 저장소에서 실행하며 실제 학생 데이터나 데모 데이터에 쓰지 않습니다. 원격 Supabase 호출 형식은 대체 응답으로 검사하며, 실제 클라우드 연결 성공을 뜻하지 않습니다.
+
+
+## 자막 기반 AI 타임라인 초안
+
+- Render Environment에 `ANTHROPIC_API_KEY`를 저장합니다. 기본 모델은 `claude-haiku-5-5`이며 `ANTHROPIC_MODEL`로 변경할 수 있습니다. 채팅 구독과 별도 API 이용입니다. 키를 GitHub·브라우저·채팅에 넣지 않습니다.
+- 강의 관리 → 영상 상세 → 타임라인 편집 → AI 초안 생성에서 한 영상만 분석합니다. 자동 가져오기 예약은 AI를 호출하지 않습니다.
+- SRT/VTT 파일(240KB 이하)을 넣거나, Google 자막 권한을 별도로 승인한 계정에서 유튜브 자막을 가져옵니다. 기존 youtube.readonly 연결만으로는 captions.list/download를 사용할 수 없습니다.
+- 자막 연결 선택 시에만 Google `youtube.force-ssl` 권한을 요청합니다. 이 범위는 관리·삭제 권한도 포함하므로 연결 안내에서 범위를 명확히 설명합니다. 풀이로그는 captions.list/download만 호출하며 업로드·수정·삭제 API를 호출하지 않습니다. 자막 트랙이 없거나 다운로드가 허용되지 않으면 Studio의 SRT/VTT 파일을 사용합니다.
+- 자막의 번호·주제·시작 구간을 Claude Messages API의 구조화된 출력으로 추출합니다. 서버가 실제 자막 cue와 원문 근거를 검증하며 시간은 모델이 만든 숫자가 아니라 해당 cue 시작 시각을 사용합니다.
+- 결과는 timeline_draft에만 저장하고 기존 공개 타임라인·메모·반·숨김 상태를 보존합니다. 모르는 문제 번호는 `번호 확인 필요`로 남기며 그 상태로 학생 반영은 차단합니다. 교재 쪽수는 추측하지 않습니다.
+- 기존 초안 교체는 확인을 받고, 분석 중 타임라인 수정·영상 삭제가 발생하면 덮어쓰지 않습니다. API 오류·잘린 응답·잘못된 근거·빈 결과는 초안을 변경하지 않습니다.
+- 현재는 자막 내용 분석이며 영상 화면·판서·교재 PDF·수업 스타일 분석은 아닙니다. 실제 강의 한 개로 품질·비용을 검증한 뒤 사용 범위를 넓힙니다.
+
+공식 문서: [Claude Messages](https://platform.claude.com/docs/en/build-with-claude/working-with-messages), [구조화된 출력](https://platform.claude.com/docs/en/build-with-claude/structured-outputs), [YouTube 자막 다운로드](https://developers.google.com/youtube/data/reference/rest/v3/captions/download).

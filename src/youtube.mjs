@@ -3,6 +3,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 import { classKey,canonicalClassName,titleClassAlias } from './classes.mjs';
 
 const scope='https://www.googleapis.com/auth/youtube.readonly';
+const captionScope='https://www.googleapis.com/auth/youtube.force-ssl';
 const digest=value=>createHash('sha256').update(value).digest('hex');
 const fail=message=>{throw Object.assign(new Error(message),{status:400})};
 export const publicSettings=rows=>Object.fromEntries(rows.filter(r=>!r.key.startsWith('youtube_')).map(r=>[r.key,r.value]));
@@ -30,15 +31,15 @@ export class YouTubeConnection {
  open(value){try{const [iv,tag,data]=value.split('.').map(s=>Buffer.from(s,'base64url'));const decipher=createDecipheriv('aes-256-gcm',this.key,iv);decipher.setAuthTag(tag);return JSON.parse(Buffer.concat([decipher.update(data),decipher.final()]).toString())}catch{fail('유튜브 연결을 다시 진행해주세요.')}}
  async read(){const row=(await this.store.all('settings',{key:'youtube_credentials'}))[0];return row?this.open(row.value):null}
  async save(value){await this.store.put('settings',{key:'youtube_credentials',value:this.seal(value)})}
- async status(){const data=await this.read();return {configured:this.configured,connected:!!data,channel_title:data?.channel?.title||'',channel_id:data?.channel?.id||'',last_sync:data?.last_sync||null,redirect_uri:this.redirectUri}}
- async start(session){
+ async status(){const data=await this.read();return {configured:this.configured,connected:!!data,channel_title:data?.channel?.title||'',channel_id:data?.channel?.id||'',last_sync:data?.last_sync||null,captions_enabled:!!data?.scopes?.includes(captionScope),redirect_uri:this.redirectUri}}
+ async start(session,{captions=false}={}){
   if(!this.configured)fail('Render에 Google 연결 설정을 먼저 입력해주세요.');
   const now=Date.now()/1000;
   for(const row of await this.store.all('settings'))if(row.key.startsWith('youtube_state_')){const value=this.open(row.value);if(value.expires<now)await this.store.del('settings',{key:row.key})}
   const state=randomBytes(32).toString('base64url'),verifier=randomBytes(32).toString('base64url');
-  await this.store.put('settings',{key:'youtube_state_'+digest(state),value:this.seal({digest:session.digest,expires:now+600,verifier})});
+  await this.store.put('settings',{key:'youtube_state_'+digest(state),value:this.seal({digest:session.digest,expires:now+600,verifier,captions})});
   const url=new URL('https://accounts.google.com/o/oauth2/v2/auth');
-  url.search=new URLSearchParams({client_id:this.cfg.googleClientId,redirect_uri:this.redirectUri,response_type:'code',scope,access_type:'offline',prompt:'consent',state,code_challenge:createHash('sha256').update(verifier).digest('base64url'),code_challenge_method:'S256'});
+  url.search=new URLSearchParams({client_id:this.cfg.googleClientId,redirect_uri:this.redirectUri,response_type:'code',scope:captions?scope+' '+captionScope:scope,access_type:'offline',prompt:'consent',state,code_challenge:createHash('sha256').update(verifier).digest('base64url'),code_challenge_method:'S256'});
   return {url:url.href,state};
  }
  async token(params){
@@ -58,11 +59,11 @@ export class YouTubeConnection {
   if(pending.expires<Date.now()/1000||!session||session.expires<Date.now()/1000)fail('선생님 로그인 후 다시 연결해주세요.');
   if(query.get('error')||!query.get('code'))fail('Google 연결 승인이 완료되지 않았어요.');
   const tokens=await this.token({code:query.get('code'),grant_type:'authorization_code',redirect_uri:this.redirectUri,code_verifier:pending.verifier});
-  if(!tokens.scope?.split(' ').includes(scope)||!tokens.refresh_token)fail('영상 읽기 권한을 선택하고 다시 연결해주세요.');
+  if(!tokens.scope?.split(' ').includes(scope)||!tokens.refresh_token||pending.captions&&!tokens.scope.split(' ').includes(captionScope))fail('영상 읽기 권한을 선택하고 다시 연결해주세요.');
   const channels=await this.api('channels',{part:'snippet,contentDetails',mine:'true',maxResults:'50'},tokens.access_token);
   if(channels.items?.length!==1)fail('수업 영상을 올리는 유튜브 채널을 선택해서 다시 연결해주세요.');
   const c=channels.items[0];if(!c.contentDetails?.relatedPlaylists?.uploads)fail('유튜브 채널의 업로드 목록을 찾지 못했어요.');
-  await this.save({refresh_token:tokens.refresh_token,access_token:tokens.access_token,expires:Date.now()/1000+Number(tokens.expires_in||3600)-60,channel:{id:c.id,title:c.snippet.title,uploads:c.contentDetails.relatedPlaylists.uploads},last_sync:null});
+  await this.save({scopes:tokens.scope.split(' '),refresh_token:tokens.refresh_token,access_token:tokens.access_token,expires:Date.now()/1000+Number(tokens.expires_in||3600)-60,channel:{id:c.id,title:c.snippet.title,uploads:c.contentDetails.relatedPlaylists.uploads},last_sync:null});
  }
  async access(data){if(data.expires>Date.now()/1000)return data.access_token;const token=await this.token({grant_type:'refresh_token',refresh_token:data.refresh_token});data.access_token=token.access_token;data.expires=Date.now()/1000+Number(token.expires_in||3600)-60;if(token.refresh_token)data.refresh_token=token.refresh_token;await this.save(data);return data.access_token}
  async withVideoLock(action){
@@ -94,6 +95,18 @@ export class YouTubeConnection {
   await this.store.del('settings',{key:'youtube_credentials'});
   for(const row of await this.store.all('settings'))if(row.key.startsWith('youtube_state_'))await this.store.del('settings',{key:row.key});
   return {revoked};
+ }
+ async downloadCaptions(videoId){
+  const data=await this.read();if(!data)fail('Google 계정을 먼저 연결해주세요.');
+  if(!data.scopes?.includes(captionScope))fail('현재 연결에는 자막 내려받기 권한이 없어요. 자막 권한을 연결하거나 SRT/VTT 파일을 넣어주세요.');
+  const access=await this.access(data);
+  const result=await this.api('captions',{part:'snippet',videoId},access);
+  const tracks=(result.items||[]).filter(t=>!t.snippet?.isDraft&&t.snippet?.status==='serving').sort((a,b)=>(b.snippet.language?.startsWith('ko')?1:0)-(a.snippet.language?.startsWith('ko')?1:0));
+  if(!tracks.length)fail('가져올 수 있는 자막이 없어요. YouTube Studio에서 SRT/VTT 자막을 내려받아 넣어주세요.');
+  let response;try{response=await this.fetcher('https://www.googleapis.com/youtube/v3/captions/'+encodeURIComponent(tracks[0].id)+'?tfmt=vtt',{headers:{Authorization:'Bearer '+access},signal:AbortSignal.timeout(30000)})}catch{fail('자막 다운로드가 지연돼요. 다시 시도해주세요.')}
+  if(!response.ok)fail('이 자막을 내려받을 수 없어요. YouTube Studio의 SRT/VTT 파일로 시험해주세요.');
+  const text=await response.text();if(Buffer.byteLength(text)>240000)fail('자막이 너무 커요. 한 수업 분량으로 나눠주세요.');
+  return {text,source:'youtube',language:tracks[0].snippet.language};
  }
  async inspectVideos(ids){
   const data=await this.read();if(!data)fail('Google 계정을 먼저 연결해주세요.');

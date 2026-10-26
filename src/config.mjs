@@ -16,5 +16,5 @@ export function config(env=process.env){
   adminCode ||= '2424';
   if(!sessionSecret){const dir=resolve('.private');mkdirSync(dir,{recursive:true});const file=resolve(dir,'session-secret');if(!existsSync(file))writeFileSync(file,randomBytes(32).toString('hex'),{mode:0o600});sessionSecret=readFileSync(file,'utf8').trim()}
  }
- return {production,port,origin,driver,adminCode,sessionSecret,googleClientId:env.GOOGLE_CLIENT_ID||'',googleClientSecret:env.GOOGLE_CLIENT_SECRET||'',supabaseUrl:env.SUPABASE_URL,supabaseKey:env.SUPABASE_SECRET_KEY,trustProxy:env.TRUST_PROXY==='true',dbPath:env.LOCAL_DB_PATH||resolve('.private/pulilog.sqlite3')};
+ return {production,port,origin,driver,adminCode,sessionSecret,anthropicKey:env.ANTHROPIC_API_KEY||'',anthropicModel:env.ANTHROPIC_MODEL||'claude-haiku-5-5',googleClientId:env.GOOGLE_CLIENT_ID||'',googleClientSecret:env.GOOGLE_CLIENT_SECRET||'',supabaseUrl:env.SUPABASE_URL,supabaseKey:env.SUPABASE_SECRET_KEY,trustProxy:env.TRUST_PROXY==='true',dbPath:env.LOCAL_DB_PATH||resolve('.private/pulilog.sqlite3')};
 }

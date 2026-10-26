@@ -8,22 +8,24 @@ import { LocalStore,SupabaseStore,StoreError } from './store.mjs';
 import { normalizeSchedule } from './schedules.mjs';
 import { canonicalClassName,mergeClassAliases,titleClassAlias } from './classes.mjs';
 import { YouTubeConnection,publicSettings,youtubeYear } from './youtube.mjs';
+import { TimelineAI,timelineFingerprint,parseCaptions } from './timeline-ai.mjs';
 import { YouTubeAutoImport } from './youtube-auto.mjs';
 
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'../public');
-const assets=new Map([['/','index.html'],...['index.html','search.js','app.js','accounts.js','teacher.js','workbench.js','production.js','style.css'].map(f=>['/'+f,f])]);
+const assets=new Map([['/','index.html'],...['index.html','search.js','app.js','accounts.js','teacher.js','workbench.js','production.js','timeline-ai.js','style.css'].map(f=>['/'+f,f])]);
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const clean=(v,max=300)=>String(v??'').trim().slice(0,max);
 const check=(ok,message='입력 내용을 확인해주세요.',status=400)=>{if(!ok){const e=new Error(message);e.status=status;throw e}};
 const phone=v=>{const p=clean(v).replace(/[^0-9]/g,'');check(/^010\d{8}$/.test(p),'휴대폰 번호 11자리를 입력해주세요.');return p};
 function publicVideo(v,favorite=false){return Object.fromEntries([...['id','title','class_name','book','subject','unit','added_at','timeline','youtube_published_at'].map(k=>[k,v[k]]),['favorite',favorite],['is_new',Date.now()/1000-v.added_at<604800]])}
 function cleanRows(rows){check(Array.isArray(rows)&&rows.length<=500);return rows.map(r=>{check(Array.isArray(r)&&r.length===5);const [n,p,t,,sec]=r;check(clean(n)&&clean(t)&&Number.isInteger(sec)&&sec>=0&&sec<=86400&&Number.isInteger(Number(p||0))&&Number(p||0)>=0&&Number(p||0)<=10000);const label=sec>=3600?`${Math.floor(sec/3600)}:${String(Math.floor(sec%3600/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`:`${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`;return[clean(n,30),Number(p||0),clean(t,200),label,sec]})}
-async function body(req){let n=0;const chunks=[];for await(const c of req){n+=c.length;check(n<=100000,'입력 내용이 너무 길어요.',413);chunks.push(c)}let d;try{d=JSON.parse(Buffer.concat(chunks).toString()||'{}')}catch{check(false,'입력 형식을 확인해주세요.')}check(d&&typeof d==='object'&&!Array.isArray(d));return d}
+async function body(req,max=100000){let n=0;const chunks=[];for await(const c of req){n+=c.length;check(n<=max,'입력 내용이 너무 길어요.',413);chunks.push(c)}let d;try{d=JSON.parse(Buffer.concat(chunks).toString()||'{}')}catch{check(false,'입력 형식을 확인해주세요.')}check(d&&typeof d==='object'&&!Array.isArray(d));return d}
 function cookieToken(req,role){const name=role==='teacher'?'axis_admin':'axis_student';return (req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(name+'='))?.slice(name.length+1)||''}
 
 export function createApp(cfg,store,options={}){
  const youtube=new YouTubeConnection(cfg,store,options.youtubeFetch);
  const youtubeAuto=new YouTubeAutoImport(cfg,store,youtube);
+ const timelineAI=new TimelineAI(cfg,options.aiFetch);
  const oauthCookie=(value,expire=false)=>`pl_youtube_state=${value}; Path=/api/youtube/callback; HttpOnly; SameSite=Lax; Max-Age=${expire?0:600}${cfg.production?'; Secure':''}`;
  const send=(res,status,data,cookie)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8',...(cookie?{'Set-Cookie':cookie}:{})});res.end(JSON.stringify(data))};
  const cookie=(role,token,remember=false,expire=false)=>`${role==='teacher'?'axis_admin':'axis_student'}=${token}; Path=/; HttpOnly; SameSite=Strict${cfg.production?'; Secure':''}${expire?'; Max-Age=0':remember?'; Max-Age=2592000':''}`;
@@ -53,20 +55,20 @@ export function createApp(cfg,store,options={}){
     check(req.headers.host===new URL(cfg.origin).host,'허용되지 않은 주소예요.',403);
     return send(res,200,await youtubeAuto.run(req.headers.authorization));
    }
-   if(req.method==='GET'&&path==='/api/status')return send(res,200,{name:'풀이로그',database:cfg.driver,environment:cfg.production?'production':'development',youtube_connected:(await youtube.status()).connected,video_analysis_connected:false,demo_data:false});
+   if(req.method==='GET'&&path==='/api/status')return send(res,200,{name:'풀이로그',database:cfg.driver,environment:cfg.production?'production':'development',youtube_connected:(await youtube.status()).connected,video_analysis_connected:false,timeline_analysis_configured:timelineAI.status().configured,demo_data:false});
    if(req.method==='GET'&&path==='/api/session'){const s=await session(req,'student');return send(res,200,{student:s?{id:s.id,name:s.name,class_name:s.class_name}:null,teacher:!!await session(req,'teacher')})}
    if(req.method==='GET'&&path==='/api/videos'){const s=await requireRole(req);const fav=new Set((await store.all('favorites',{student_id:s.id})).map(f=>f.video_id));return send(res,200,{videos:(await allowedVideos(s)).map(v=>publicVideo(v,fav.has(v.id)))})}
    if(req.method==='GET'&&path==='/api/teacher/state'){
     await requireRole(req,'teacher');const [students,videos,relations,class_info,settings]=await Promise.all(['students','videos','video_classes','classes','settings'].map(t=>store.all(t)));
     const videoDates=settings.find(row=>row.key==='youtube_video_dates')?.value||{};
-    return send(res,200,{students:students.sort((a,b)=>a.id-b.id),classes:class_info.map(c=>c.name).sort(),class_info,settings:publicSettings(settings),youtube:{...await youtube.status(),auto_import:await youtubeAuto.status()},videos:videos.sort((a,b)=>b.added_at-a.added_at).map(v=>({...v,youtube_year:youtubeYear(videoDates[v.id]),youtube_published_at:Number.isFinite(Date.parse(videoDates[v.id]))?videoDates[v.id]:null,is_new:Date.now()/1000-v.added_at<604800,classes:relations.filter(r=>r.video_id===v.id).map(r=>r.class_name),has_draft:v.timeline_draft!==null,timeline_draft:v.timeline_draft??v.timeline}))});
+    return send(res,200,{students:students.sort((a,b)=>a.id-b.id),classes:class_info.map(c=>c.name).sort(),class_info,settings:publicSettings(settings),youtube:{...await youtube.status(),auto_import:await youtubeAuto.status()},ai:timelineAI.status(),videos:videos.sort((a,b)=>b.added_at-a.added_at).map(v=>({...v,ai_analysis:settings.find(row=>row.key==='youtube_timeline_analysis_'+v.id)?.value||null,youtube_year:youtubeYear(videoDates[v.id]),youtube_published_at:Number.isFinite(Date.parse(videoDates[v.id]))?videoDates[v.id]:null,is_new:Date.now()/1000-v.added_at<604800,classes:relations.filter(r=>r.video_id===v.id).map(r=>r.class_name),has_draft:v.timeline_draft!==null,timeline_draft:v.timeline_draft??v.timeline}))});
    }
    if(req.method==='GET'&&assets.has(path)){const file=assets.get(path);const contents=await readFile(resolve(ROOT,file));res.writeHead(200,{'Content-Type':file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8'});return res.end(contents)}
    if(req.method!=='POST')return send(res,404,{error:'없는 페이지예요.'});
    check(req.headers['x-axis-request']==='1','앱에서 다시 시도해주세요.',403);
    check(!req.headers.origin||req.headers.origin===cfg.origin,'허용되지 않은 요청이에요.',403);
    check(req.headers.host===new URL(cfg.origin).host,'허용되지 않은 주소예요.',403);
-   const d=await body(req);
+   const d=await body(req,path==='/api/teacher/timeline/analyze'?500000:100000);
    if(path==='/api/login'||path==='/api/teacher/login'){
     await rate(req,path);
     if(path==='/api/teacher/login'){check(timingSafeEqual(Buffer.from(hash(String(d.code||''))),Buffer.from(hash(cfg.adminCode))),'선생님 접속 코드를 확인해주세요.',401);return send(res,200,{ok:true},await newSession('teacher'))}
@@ -113,7 +115,23 @@ export function createApp(cfg,store,options={}){
     await youtube.removeVideos(targets.map(v=>v.id));
     return send(res,200,{deleted:targets.length,kept:videos.length-targets.length,unknown_date:unknown});
    }
-   if(path==='/api/teacher/youtube/connect'){const started=await youtube.start(teacherSession);return send(res,200,{url:started.url},oauthCookie(started.state))}
+   if(path==='/api/teacher/youtube/connect'){const started=await youtube.start(teacherSession,{captions:d.captions===true});return send(res,200,{url:started.url},oauthCookie(started.state))}
+   if(path==='/api/teacher/timeline/captions'){
+    const id=clean(d.id,11);check((await store.all('videos',{id})).length,'영상을 찾을 수 없어요.',404);
+    const caption=await youtube.downloadCaptions(id),cues=parseCaptions(caption.text);
+    return send(res,200,{...caption,cue_count:cues.length});
+   }
+   if(path==='/api/teacher/timeline/analyze'){
+    const id=clean(d.id,11),video=(await store.all('videos',{id}))[0];check(video,'영상을 찾을 수 없어요.',404);
+    check(!video.timeline_draft?.length||d.replace_draft===true,'기존 초안 교체에 동의한 뒤 다시 실행해주세요.');
+    const fingerprint=timelineFingerprint(video),result=await timelineAI.analyze(d.captions,video);
+    const latest=(await store.all('videos',{id}))[0];check(latest,'분석 중 영상이 삭제됐어요. 결과를 저장하지 않았어요.',404);
+    check(timelineFingerprint(latest)===fingerprint,'분석 중 타임라인이 변경되어 결과를 덮어쓰지 않았어요.',412);
+    const analysis={created_at:new Date().toISOString(),model:result.model,source:d.source==='youtube'?'youtube':'file',evidence:result.evidence,needs_check:result.needs_check,cue_count:result.cue_count,usage:result.usage};
+    await store.patch('videos',{id},{timeline_draft:result.rows,reviewed:false});
+    await store.put('settings',{key:'youtube_timeline_analysis_'+id,value:analysis});
+    return send(res,200,{rows:result.rows,analysis});
+   }
    if(path==='/api/teacher/youtube/video-status'){
     check(Array.isArray(d.ids)&&d.ids.length>0&&d.ids.length<=50&&d.ids.every(id=>typeof id==='string'&&/^[A-Za-z0-9_-]{11}$/.test(id)));
     return send(res,200,await youtube.inspectVideos(d.ids));
@@ -138,7 +156,7 @@ export function createApp(cfg,store,options={}){
    }
    if(path==='/api/teacher/timeline'||path==='/api/teacher/note'){
     const old=(await store.all('videos',{id:clean(d.id,11)}))[0];check(old,'영상을 찾을 수 없어요.',404);
-    let changes;if(path.endsWith('/note')){changes={notes:clean(d.notes,5000),supplement_needed:d.supplement_needed===true}}else{const rows=cleanRows(d.rows);changes=d.publish===true?{timeline:rows,timeline_draft:null,reviewed:true}:{timeline_draft:rows,reviewed:false}}
+    let changes;if(path.endsWith('/note')){changes={notes:clean(d.notes,5000),supplement_needed:d.supplement_needed===true}}else{const rows=cleanRows(d.rows);check(d.publish!==true||rows.every(r=>r[0]!=='번호 확인 필요'),'번호 확인 필요 항목의 문제 번호를 수정하거나 삭제한 뒤 반영해주세요.');changes=d.publish===true?{timeline:rows,timeline_draft:null,reviewed:true}:{timeline_draft:rows,reviewed:false}}
     await store.patch('videos',{id:old.id},changes);return send(res,200,{ok:true});
    }
    if(path==='/api/teacher/settings'){const channel=clean(d.channel_url,500);check(!channel||/^https:\/\/(www\.)?youtube\.com\/(@[\w.\-]+|channel\/[\w\-]+)\/?$/.test(channel),'유튜브 채널 주소를 확인해주세요.');await store.put('settings',{key:'channel_url',value:channel});return send(res,200,{ok:true})}
