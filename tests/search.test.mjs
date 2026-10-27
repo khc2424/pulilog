@@ -13,7 +13,7 @@ test('강의 관리에서 2026년을 기본 표시하고 전체·날짜 미확�
    {id:'c',title:'수동영상',youtube_year:null,timeline:[]}
   ]}};
  const countHelper=source.slice(source.indexOf('function countedMissing('),source.indexOf('const teacherVideo='));
- context.teacherIncludeOlderMissing=false;runInNewContext(countHelper+view,context);
+ context.teacherIncludeOlderMissing=false;context.teacherIncludeOlderReview=false;runInNewContext(countHelper+view,context);
  let html=context.teacherCourses();assert.ok(html.includes('올해영상'));assert.ok(!html.includes('지난영상'));assert.ok(!html.includes('수동영상'));
  context.teacherCourseYear='all';html=context.teacherCourses();assert.ok(html.includes('지난영상'));assert.ok(html.includes('수동영상'));
  context.teacherCourseYear='unknown';html=context.teacherCourses();assert.ok(html.includes('수동영상'));assert.ok(!html.includes('올해영상'));
@@ -123,4 +123,23 @@ test('미분류 카운트는 한국시간 기준일 이후 게시 영상만 세�
  assert.equal(context.countedMissing({youtube_published_at:'2025-01-01T00:00:00Z',added_at:Date.parse('2026-10-27T00:00:00Z')/1000}),false);
  assert.equal(context.countedMissing({added_at:Date.parse('2026-10-27T00:00:00Z')/1000}),true);
  assert.equal(context.countedMissing({complete:true,youtube_published_at:'2026-10-27T00:00:00Z'}),false);
+});
+
+
+test('타임라인 작업 집계와 기본 목록은 한국시간 기준일 이후 미검토 영상만 포함한다',async()=>{
+ const source=await readFile(new URL('../public/teacher.js',import.meta.url),'utf8');
+ const context={selectedTeacherVideoIds:new Set(),page:'courses',teacherCourseClasses:new Set(),teacherCourseMissing:new Set(),selectedCourseId:null,teacherCourseSearch:'',teacherCourseFilter:'review',teacherCourseYear:'all',teacherIncludeOlderReview:false,normalizeSearch:s=>s,heading:()=>'',esc:String,videoGroups:()=>[],badge:String,tlabel:()=>'',classificationMissing:()=>false,
+ managedData:{unclassified_count_since:'2026-10-27',videos:[
+  {id:'old',title:'이전 미검토 강의',reviewed:false,youtube_published_at:'2026-10-26T14:59:59Z',timeline:[]},
+  {id:'new',title:'오늘 미검토 강의',reviewed:false,youtube_published_at:'2026-10-26T15:00:00Z',timeline:[]},
+  {id:'done',title:'오늘 검토 완료 강의',reviewed:true,youtube_published_at:'2026-10-27T03:00:00Z',timeline:[]},
+  {id:'later',title:'내일 미검토 강의',reviewed:false,youtube_published_at:'2026-10-28T03:00:00Z',timeline:[]}
+ ]}};
+ runInNewContext(source.slice(source.indexOf('function countedMissing('),source.indexOf('const teacherVideo='))+source.slice(source.indexOf('function teacherCourses(){'),source.indexOf('function teacherCourseDetail(')),context);
+ assert.deepEqual(context.managedData.videos.map(v=>context.countedReview(v)),[false,true,false,true]);
+ let html=context.teacherCourses();assert.ok(html.includes('타임라인 검토 2개'));assert.ok(!html.includes('이전 미검토 강의'));assert.ok(!html.includes('오늘 검토 완료 강의'));assert.ok(html.includes('오늘 미검토 강의'));assert.ok(html.includes('이전 타임라인 미검토 영상도 보기'));
+ context.teacherIncludeOlderReview=true;html=context.teacherCourses();assert.ok(html.includes('타임라인 검토 3개'));assert.ok(html.includes('이전 미검토 강의'));assert.equal(context.managedData.videos.filter(context.countedReview).length,2);
+ assert.equal(context.countedReview({reviewed:false,added_at:Date.parse('2026-10-27T01:00:00Z')/1000}),true);
+ assert.equal(context.countedReview({reviewed:false,youtube_published_at:'2026-10-01T00:00:00Z',added_at:Date.parse('2026-10-27T01:00:00Z')/1000}),false);
+ context.managedData.students=[];runInNewContext(source.slice(source.indexOf('function teacherOverview(){'),source.indexOf('function teacherCourses(){')),context);html=context.teacherOverview();assert.ok(html.includes('타임라인 <em>2개</em>'));assert.ok(!html.includes('이전 미검토 강의'));assert.ok(html.includes('오늘 미검토 강의'));
 });
