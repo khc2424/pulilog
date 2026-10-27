@@ -55,3 +55,9 @@ document.addEventListener('visibilitychange',()=>{if(signedStudent&&studentMode)
 window.addEventListener('pagehide',()=>sendStudentPresence(false,true));
 window.addEventListener('hashchange',()=>syncStudentPresence());
 if(accountReady)syncStudentPresence();
+
+function recordYouTubeOpen(videoId){
+ if(!signedStudent||!studentMode)return;
+ fetch('/api/student/youtube-open',{method:'POST',credentials:'same-origin',keepalive:true,headers:{'Content-Type':'application/json','X-AXIS-Request':'1'},body:JSON.stringify({client_id:presenceClientId,event_id:crypto.randomUUID(),video_id:videoId})}).catch(()=>{});
+ try{presencePlayer?.pauseVideo()}catch{}
+}

@@ -1,7 +1,7 @@
 /* Teacher workspace: one source video, class assignments, draft/published timelines. */
 const teacherIcons={home:paths.overview[1],course:paths.lessons[1],people:paths.students[1],plan:paths.curriculum[1],book:paths.concepts[1]};
 for(const key of Object.keys(paths))delete paths[key];
-Object.assign(paths,{overview:['오늘 할 일',teacherIcons.home],courses:['강의 관리',teacherIcons.course],students:['학생·반 관리',teacherIcons.people],analysis:['수업 분석',teacherIcons.book],curriculum:['커리큘럼',teacherIcons.plan],settings:['연동 설정','<circle cx="12" cy="12" r="8"/><path d="M8 12h8M12 8v8"/>']});
+Object.assign(paths,{overview:['오늘 할 일',teacherIcons.home],courses:['강의 관리',teacherIcons.course],students:['학생·반 관리',teacherIcons.people],records:['학생 기록','<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],analysis:['수업 분석',teacherIcons.book],curriculum:['커리큘럼',teacherIcons.plan],settings:['연동 설정','<circle cx="12" cy="12" r="8"/><path d="M8 12h8M12 8v8"/>']});
 let teacherCourseYear=null,teacherIncludeOlderMissing=false,teacherIncludeOlderReview=false;
 const timelineDirtyIds=new Set();
 const teacherCourseClasses=new Set(),teacherCourseMissing=new Set(),selectedTeacherVideoIds=new Set();
@@ -24,7 +24,7 @@ function teacherNavigation(){
 }
 function renderTeacherPage(){
  teacherNavigation();
- const map={overview:teacherOverview,courses:teacherCourses,students:teacherGroups,analysis:teacherAnalysis,curriculum:teacherCurriculum,settings:teacherSettings};
+ const map={overview:teacherOverview,courses:teacherCourses,students:teacherGroups,records:studentRecordsView,analysis:teacherAnalysis,curriculum:teacherCurriculum,settings:teacherSettings};
  const html=(map[page]||teacherOverview)();
  queueMicrotask(bindTeacherPage);
  return html;
@@ -116,6 +116,8 @@ function bindTeacherPage(){
  bindTextbooks();
  if(typeof bindTimelineBatch==='function')bindTimelineBatch();
  if(typeof bindPresenceDashboard==='function')bindPresenceDashboard();
+ if(typeof bindStudentRecords==='function')bindStudentRecords();
+ if(typeof bindLearning==='function')bindLearning();
  if($('#youtube-comment-auto'))$('#youtube-comment-auto').onchange=async e=>{const enabled=e.target.checked;try{await requestAPI('/api/teacher/youtube/timeline-comments-setting',{enabled});managedData.youtube.timeline_comments_auto=enabled;toast(enabled?'검토 완료 시 유튜브 댓글을 자동 게시해요.':'댓글 자동 게시를 껐어요.')}catch(error){e.target.checked=!enabled;toast(error.message)}};
  document.querySelectorAll('[data-youtube-comment-sync]').forEach(button=>button.onclick=async()=>{button.disabled=true;try{await requestAPI('/api/teacher/youtube/timeline-comment',{id:button.dataset.youtubeCommentSync});await refreshTeacher();render();toast('유튜브 타임라인 댓글을 반영했어요.')}catch(error){toast(error.message);button.disabled=false}});
  if($('#include-older-review'))$('#include-older-review').onchange=e=>{teacherIncludeOlderReview=e.target.checked;render()};

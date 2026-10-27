@@ -5,14 +5,14 @@ delete paths.unclassified;
 if(page==='unclassified'){page='courses';teacherCourseFilter='missing';history.replaceState(null,'','#courses')}
 delete paths.homework;
 // Keep navigation in the order used during the teacher's work.
-const menuOrder=['overview','courses','students','analysis','curriculum','settings'];
+const menuOrder=['overview','courses','students','records','analysis','curriculum','settings'];
 const menuItems=Object.fromEntries(menuOrder.map(k=>[k,paths[k]]));
 Object.keys(paths).forEach(k=>delete paths[k]);Object.assign(paths,menuItems);
 const openClassGroups=new Set();
 function renderTeacherPage(){
  teacherNavigation();
  queueMicrotask(syncSidebarState);
- const map={overview:teacherOverview,courses:teacherCourses,students:teacherGroups,analysis:teacherAnalysis,curriculum:teacherCurriculum,settings:teacherSettings,planning:teacherCurriculum};
+ const map={overview:teacherOverview,courses:teacherCourses,students:teacherGroups,records:studentRecordsView,analysis:teacherAnalysis,curriculum:teacherCurriculum,settings:teacherSettings,planning:teacherCurriculum};
  const html=(map[page]||teacherOverview)();queueMicrotask(()=>{bindTeacherPage();bindWorkbench()});return html;
 }
 function teacherCurriculum(){return heading('','커리큘럼','')+`<section class="card"><h2>커리큘럼 준비 중</h2><p class="subtitle">자동 커리큘럼 기능은 준비 중이에요.</p></section>`}

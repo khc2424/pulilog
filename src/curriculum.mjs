@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 
 const fail=message=>{throw Object.assign(new Error(message),{status:400})};
-export const curriculumKey=name=>'youtube_curriculum_'+createHash('sha256').update(name).digest('hex').slice(0,24);
+export const curriculumKey=(name,teacherId='')=>'youtube_curriculum_'+createHash('sha256').update(teacherId?JSON.stringify([teacherId,name]):name).digest('hex').slice(0,24);
 export const koreaToday=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10);
 const stamp=value=>{
  if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value))fail('날짜를 확인해주세요.');
@@ -24,7 +24,7 @@ export function cleanCurriculum(input,classes){
  });
  const dates=key=>{if(!Array.isArray(input[key]||[])||(input[key]||[]).length>366)fail('보강·휴강 날짜를 확인해주세요.');return [...new Set((input[key]||[]).map(date=>{const time=stamp(date);if(time<start||time>end)fail('보강·휴강은 목표 기간 안에서 선택해주세요.');return date}))].sort()};
  const notes=String(input.notes||'').trim();if(notes.length>2000)fail('수업 특이사항은 2,000자 이내로 입력해주세요.');
- return {class_name:input.class_name,mode:input.mode,start_date:input.start_date,end_date:input.end_date,minutes_per_session:minutes,topics,makeup_dates:dates('makeup_dates'),excluded_dates:dates('excluded_dates'),notes};
+ return {...(input.auto_replan===true?{auto_replan:true}:{}),...(input.teacher_id?{teacher_id:String(input.teacher_id)}:{}),class_name:input.class_name,mode:input.mode,start_date:input.start_date,end_date:input.end_date,minutes_per_session:minutes,topics,makeup_dates:dates('makeup_dates'),excluded_dates:dates('excluded_dates'),notes};
 }
 
 export function buildCurriculum(plan,weekdays,today=koreaToday()){

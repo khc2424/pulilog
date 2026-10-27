@@ -1,3 +1,5 @@
+import {LearningWorkspace} from './learning-workspace.mjs';
+import {StudentActivity} from './student-activity.mjs';
 import { YouTubeTimelineComments,timelineCommentText } from './youtube-comments.mjs';
 import { StudentPresence } from './presence.mjs';
 import { TimelineQueue } from './timeline-queue.mjs';
@@ -18,7 +20,7 @@ import { TimelineAI,timelineFingerprint,parseCaptions } from './timeline-ai.mjs'
 import { YouTubeAutoImport } from './youtube-auto.mjs';
 
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'../public');
-const assets=new Map([['/','index.html'],...['index.html','search.js','app.js','accounts.js','teacher.js','workbench.js','production.js','timeline-ai.js','presence.js','timeline-batch.js','curriculum.js','textbooks.js','style.css'].map(f=>['/'+f,f])]);
+const assets=new Map([['/','index.html'],...['index.html','search.js','app.js','accounts.js','teacher.js','workbench.js','production.js','timeline-ai.js','presence.js','student-records.js','learning.js','timeline-batch.js','curriculum.js','textbooks.js','style.css'].map(f=>['/'+f,f])]);
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const clean=(v,max=300)=>String(v??'').trim().slice(0,max);
 const check=(ok,message='입력 내용을 확인해주세요.',status=400)=>{if(!ok){const e=new Error(message);e.status=status;throw e}};
@@ -33,6 +35,7 @@ export function createApp(cfg,store,options={}){
  const youtubeAuto=new YouTubeAutoImport(cfg,store,youtube);
  const timelineAI=new TimelineAI(cfg,options.aiFetch);
  const presence=new StudentPresence();
+ const activity=new StudentActivity(store);
  const timelineComments=new YouTubeTimelineComments(store,youtube);
  async function analyzeTimeline(d){
     const id=clean(d.id,11),video=(await store.all('videos',{id}))[0];check(video,'영상을 찾을 수 없어요.',404);
@@ -53,6 +56,7 @@ export function createApp(cfg,store,options={}){
   return analyzeTimeline({id:video.id,captions:caption.text,source:'youtube'});
  },()=>timelineAI.busy);
  const books=new TextbookLibrary(store,options.bookFiles||(cfg.driver==='supabase'?new SupabaseBookFiles(cfg.supabaseUrl,cfg.supabaseKey,options.storageFetch):new LocalBookFiles(resolve(dirname(cfg.dbPath||resolve('.private/pulilog.sqlite3')),'textbooks'))));
+ const learning=new LearningWorkspace(cfg,store,youtube,books,options.learningFetch||options.aiFetch,()=>timelineAI.busy||timelineQueue.running);
  const oauthCookie=(value,expire=false)=>`pl_youtube_state=${value}; Path=/api/youtube/callback; HttpOnly; SameSite=Lax; Max-Age=${expire?0:600}${cfg.production?'; Secure':''}`;
  const send=(res,status,data,cookie)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8',...(cookie?{'Set-Cookie':cookie}:{})});res.end(JSON.stringify(data))};
  const cookie=(role,token,remember=false,expire=false)=>`${role==='teacher'?'axis_admin':'axis_student'}=${token}; Path=/; HttpOnly; SameSite=Strict${cfg.production?'; Secure':''}${expire?'; Max-Age=0':remember?'; Max-Age=2592000':''}`;
@@ -99,6 +103,8 @@ export function createApp(cfg,store,options={}){
     }
     res.writeHead(200,{...headers,'Content-Length':bytes.length});return res.end(bytes);
    }
+   if(req.method==='GET'&&path==='/api/teacher/learning'){await requireRole(req,'teacher');learning.kick();return send(res,200,await learning.state())}
+   if(req.method==='GET'&&path==='/api/teacher/student-records'){await requireRole(req,'teacher');return send(res,200,await activity.report(Object.fromEntries(url.searchParams)))}
    if(req.method==='GET'&&path==='/api/teacher/presence'){
     await requireRole(req,'teacher');const [students,videos,sessions,relations]=await Promise.all([store.all('students',{},['id','name','class_name','active']),store.all('videos',{},['id','title','published']),store.all('sessions',{},['digest','role','expires']),store.all('video_classes')]);
     return send(res,200,{students:presence.snapshot(students,videos,sessions,relations)});
@@ -110,7 +116,7 @@ export function createApp(cfg,store,options={}){
     const videoDates=settings.find(row=>row.key==='youtube_video_dates')?.value||{};
     const curricula=settings.filter(row=>row.key.startsWith('youtube_curriculum_')).map(row=>({...row.value,calculated:buildCurriculum(row.value,daysForSchedule(class_info.find(c=>c.name===row.value.class_name)?.schedule))}));
     const teachingStyles=summarizeTeachingStyles(settings.find(row=>row.key==='youtube_teaching_style_observations')?.value||[]);
-    return send(res,200,{unclassified_count_since:settings.find(r=>r.key==='youtube_unclassified_count_since')?.value||null,textbooks:await books.list(),curricula,teaching_styles:teachingStyles,students:students.sort((a,b)=>a.id-b.id),classes:class_info.map(c=>c.name).sort(),class_info,settings:publicSettings(settings),youtube:{...await youtube.status(),timeline_comments_auto:await timelineComments.enabled(),auto_import:await youtubeAuto.status()},ai:timelineAI.status(),videos:videos.sort((a,b)=>b.added_at-a.added_at).map(v=>({...v,youtube_comment:settings.find(row=>row.key==='youtube_timeline_comment_'+v.id)?.value||null,ai_analysis:settings.find(row=>row.key==='youtube_timeline_analysis_'+v.id)?.value||null,youtube_year:youtubeYear(videoDates[v.id]),youtube_published_at:Number.isFinite(Date.parse(videoDates[v.id]))?videoDates[v.id]:null,is_new:Date.now()/1000-v.added_at<604800,classes:relations.filter(r=>r.video_id===v.id).map(r=>r.class_name),has_draft:v.timeline_draft!==null,timeline_draft:v.timeline_draft??v.timeline}))});
+    return send(res,200,{learning:await learning.state(),unclassified_count_since:settings.find(r=>r.key==='youtube_unclassified_count_since')?.value||null,textbooks:await books.list(),curricula,teaching_styles:teachingStyles,students:students.sort((a,b)=>a.id-b.id),classes:class_info.map(c=>c.name).sort(),class_info,settings:publicSettings(settings),youtube:{...await youtube.status(),timeline_comments_auto:await timelineComments.enabled(),auto_import:await youtubeAuto.status()},ai:timelineAI.status(),videos:videos.sort((a,b)=>b.added_at-a.added_at).map(v=>({...v,youtube_comment:settings.find(row=>row.key==='youtube_timeline_comment_'+v.id)?.value||null,ai_analysis:settings.find(row=>row.key==='youtube_timeline_analysis_'+v.id)?.value||null,youtube_year:youtubeYear(videoDates[v.id]),youtube_published_at:Number.isFinite(Date.parse(videoDates[v.id]))?videoDates[v.id]:null,is_new:Date.now()/1000-v.added_at<604800,classes:relations.filter(r=>r.video_id===v.id).map(r=>r.class_name),has_draft:v.timeline_draft!==null,timeline_draft:v.timeline_draft??v.timeline}))});
    }
    if(req.method==='GET'&&assets.has(path)){const file=assets.get(path);const contents=await readFile(resolve(ROOT,file));res.writeHead(200,{'Content-Type':file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8'});return res.end(contents)}
    if(req.method!=='POST')return send(res,404,{error:'없는 페이지예요.'});
@@ -129,14 +135,18 @@ export function createApp(cfg,store,options={}){
     if(path==='/api/teacher/login'){check(timingSafeEqual(Buffer.from(hash(String(d.code||''))),Buffer.from(hash(cfg.adminCode))),'선생님 접속 코드를 확인해주세요.',401);return send(res,200,{ok:true},await newSession('teacher'))}
     const s=(await store.all('students',{phone:phone(d.phone),active:true}))[0];check(s,'등록된 번호를 확인해주세요.',401);return send(res,200,{student:{id:s.id,name:s.name,class_name:s.class_name}},await newSession('student',s.id,d.remember===true));
    }
-   if(path==='/api/presence'){
-    const student=await requireRole(req),studentSession=await sessionRecord(req);const videoId=String(d.video_id||'');
-    if(videoId){const [videos,relations]=await Promise.all([store.all('videos',{id:videoId},['id','published']),store.all('video_classes',{video_id:videoId,class_name:student.class_name})]);check(videos[0]?.published&&relations.length,'이 반에서 볼 수 없는 영상이에요.',403);}
-    presence.update(studentSession,student,d);return send(res,200,{ok:true});
+   if(path==='/api/presence'||path==='/api/student/youtube-open'){
+    const student=await requireRole(req),studentSession=await sessionRecord(req),videoId=String(d.video_id||'');let video=null;
+    if(videoId){const [videos,relations]=await Promise.all([store.all('videos',{id:videoId},['id','title','published']),store.all('video_classes',{video_id:videoId,class_name:student.class_name})]);check(videos[0]?.published&&relations.length,'이 반에서 볼 수 없는 영상이에요.',403);video=videos[0]}
+    if(path==='/api/student/youtube-open'){check(video,'영상을 선택해주세요.');await activity.mutate(studentSession,student,d,video,{external:true})}
+    else{presence.update(studentSession,student,d);await activity.mutate(studentSession,student,d,video)}
+    return send(res,200,{ok:true});
    }
-   if(path==='/api/logout'||path==='/api/teacher/logout'){const role=path.includes('/teacher/')?'teacher':'student';const token=cookieToken(req,role);if(token){presence.removeSession(hash(token));await store.del('sessions',{digest:hash(token)})}return send(res,200,{ok:true},cookie(role,'',false,true))}
+   if(path==='/api/logout'||path==='/api/teacher/logout'){const role=path.includes('/teacher/')?'teacher':'student';const token=cookieToken(req,role);if(token){if(role==='student')await activity.logout({digest:hash(token)});presence.removeSession(hash(token));await store.del('sessions',{digest:hash(token)})}return send(res,200,{ok:true},cookie(role,'',false,true))}
    if(path==='/api/favorite'){const s=await requireRole(req);check((await allowedVideos(s)).some(v=>v.id===d.video_id),'이 반에서 볼 수 없는 영상이에요.',404);const value={student_id:s.id,video_id:d.video_id};if(d.favorite===true)await store.put('favorites',value);else await store.del('favorites',value);return send(res,200,{favorite:d.favorite===true})}
    const teacherSession=await requireRole(req,'teacher');
+   if(path==='/api/teacher/learning/teacher')return send(res,200,{teacher:await learning.createTeacher(d.name)});
+   if(path==='/api/teacher/learning/analyze')return send(res,202,await learning.enqueue(d.type,d));
    if(path==='/api/teacher/youtube/timeline-comments-setting'){check(typeof d.enabled==='boolean');await store.put('settings',{key:'youtube_timeline_comments_auto',value:d.enabled});return send(res,200,{ok:true})}
    if(path==='/api/teacher/youtube/timeline-comment'){
     const video=(await store.all('videos',{id:clean(d.id,11)}))[0];check(video,'영상을 찾지 못했어요.',404);
@@ -191,21 +201,22 @@ export function createApp(cfg,store,options={}){
    }
    if(path==='/api/teacher/youtube/connect'){const started=await youtube.start(teacherSession,{captions:d.captions===true});return send(res,200,{url:started.url},oauthCookie(started.state))}
    if(path==='/api/teacher/curriculum/preview'||path==='/api/teacher/curriculum/save'){
-    const classes=await store.all('classes'),plan=cleanCurriculum(d,classes.map(c=>c.name));
+    const classes=await store.all('classes'),plan=cleanCurriculum(d,classes.map(c=>c.name));if(plan.teacher_id)await learning.teacher(plan.teacher_id);
     const calculated=buildCurriculum(plan,daysForSchedule(classes.find(c=>c.name===plan.class_name)?.schedule));
     if(path.endsWith('/preview'))return send(res,200,{plan,calculated});
-    const key=curriculumKey(plan.class_name),old=(await store.all('settings',{key}))[0]?.value;
+    const key=curriculumKey(plan.class_name,plan.teacher_id),old=(await store.all('settings',{key}))[0]?.value;
     check(Number(d.revision||0)===Number(old?.revision||0),'다른 화면에서 계획이 변경됐어요. 새로고침 후 다시 저장해주세요.',412);
-    const saved={...plan,revision:(old?.revision||0)+1,updated_at:new Date().toISOString(),history:[...(old?.history||[]),{at:new Date().toISOString(),action:'계획 저장'}].slice(-50)};
+    let aiDraft=null;if(d.ai_draft_id){aiDraft=await learning.result(d.ai_draft_id,'plan');check(aiDraft.teacher_id===plan.teacher_id&&aiDraft.plan.class_name===plan.class_name&&aiDraft.base_revision===Number(old?.revision||0),'분석 초안의 선생님·반·기존 진도를 다시 확인해주세요.',412);}
+    const saved={...plan,...(aiDraft?{ai_draft_id:aiDraft.id,ai_scope:aiDraft.scope,ai_sources:{book_analysis_id:aiDraft.source_book_analysis_id,lesson_ids:aiDraft.source_lesson_ids}}:old?.ai_draft_id?{ai_draft_id:old.ai_draft_id,ai_scope:old.ai_scope,ai_sources:old.ai_sources}:{}),revision:(old?.revision||0)+1,updated_at:new Date().toISOString(),history:[...(old?.history||[]),{at:new Date().toISOString(),action:'계획 저장'}].slice(-50)};
     await store.put('settings',{key,value:saved});return send(res,200,{plan:saved,calculated});
    }
    if(path==='/api/teacher/curriculum/progress'){
-    const key=curriculumKey(clean(d.class_name,60)),old=(await store.all('settings',{key}))[0]?.value;check(old,'먼저 반의 커리큘럼을 저장해주세요.',404);
+    const key=curriculumKey(clean(d.class_name,60),String(d.teacher_id||'')),old=(await store.all('settings',{key}))[0]?.value;check(old,'먼저 반의 커리큘럼을 저장해주세요.',404);
     check(Number(d.revision)===old.revision,'다른 화면에서 계획이 변경됐어요. 새로고침 후 다시 기록해주세요.',412);
     check(old.topics.some(t=>t.id===d.topic_id),'단원을 선택해주세요.');
     const updated={...old,topics:old.topics.map(t=>t.id===d.topic_id?{...t,done_minutes:Number(d.done_minutes)}:t)};
     const plan=cleanCurriculum(updated,(await store.all('classes')).map(c=>c.name)),note=clean(d.note,500);
-    const saved={...plan,revision:old.revision+1,updated_at:new Date().toISOString(),history:[...(old.history||[]),{at:new Date().toISOString(),action:'진도 수정',topic_id:d.topic_id,done_minutes:Number(d.done_minutes),note}].slice(-50)};
+    const saved={...plan,...(old.ai_draft_id?{ai_draft_id:old.ai_draft_id,ai_scope:old.ai_scope,ai_sources:old.ai_sources}:{}),revision:old.revision+1,updated_at:new Date().toISOString(),history:[...(old.history||[]),{at:new Date().toISOString(),action:'진도 수정',topic_id:d.topic_id,done_minutes:Number(d.done_minutes),note}].slice(-50)};
     await store.put('settings',{key,value:saved});return send(res,200,{ok:true});
    }
    if(path==='/api/teacher/timeline/captions'){
@@ -257,8 +268,8 @@ export function createApp(cfg,store,options={}){
    return send(res,404,{error:'없는 기능이에요.'});
   }catch(e){const status=e instanceof StoreError?e.status:e.status||500;send(res,status,{error:status===409?'이미 등록된 전화번호예요.':status>=500?'서버 연결을 확인해주세요.':e.message})}
  });
- app.on('listening',()=>timelineQueue.kick());
- app.on('close',()=>timelineQueue.close());
+ app.on('listening',()=>{timelineQueue.kick();learning.kick()});
+ app.on('close',()=>{timelineQueue.close();learning.close()});
  return app;
 }
 
