@@ -114,3 +114,5 @@ body.sidebar-collapsed .topbar{padding-left:72px}
 .library-cover.course .course-thumbnail{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.library-cover.course .course-thumbnail[hidden]{display:none}.library-cover.course .cover-play{color:white;background:#0008;box-shadow:0 1px 8px #0003}.library-cover.course:hover .cover-play{color:#315D60;background:white}
 
 .textbook-group{border:1px solid var(--line);border-radius:12px}.textbook-group .textbook-row:last-child{border-bottom:0}.textbook-group summary:hover{background:#EDF3F266}.textbook-groups{margin-top:16px}
+
+.timeline-row.timeline-marked{grid-template-columns:80px minmax(0,1fr) auto}.timeline-marked .timeline-number{font-size:11px;white-space:nowrap;color:#6B554D;background:#F0E9E4}

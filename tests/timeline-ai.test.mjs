@@ -50,6 +50,10 @@ test('AI 결과는 초안에만 저장하고 학생에게 비공개, 동시 수�
   changeDuringAnalysis=true;
   assert.equal((await post('/api/teacher/timeline/analyze',{...data,replace_draft:true},teacher)).status,412);
   assert.equal((await store.all('videos',{id:video.id}))[0].timeline_draft[0][0],'9');
+  const specialRows=[['잡담1',0,'주말 이야기','00:20',20],['캡쳐구간1',0,'화면 캡처 안내','00:40',40]];
+  assert.equal((await post('/api/teacher/timeline',{id:video.id,rows:specialRows,publish:true},teacher)).status,200);
+  const published=await (await fetch(cfg.origin+'/api/videos',{headers:{Cookie:student}})).json();assert.deepEqual(published.videos[0].timeline,specialRows);
+
  }finally{await new Promise(r=>app.close(r));store.close()}
 });
 
@@ -85,4 +89,32 @@ test('90분 한국어 자막은 240KB를 넘어도 자동 분할하고 원래 �
   lastId=-1;const payload={id:'LongVideo01',captions:long,source:'file'};assert.ok(Buffer.byteLength(JSON.stringify(payload))>500000);
   const response=await post('/api/teacher/timeline/analyze',payload,cookie);assert.equal(response.status,200);assert.ok((await response.json()).rows.length>1);
  }finally{await new Promise(r=>app.close(r));store.close()}
+});
+
+test('잡담과 캡쳐구간은 문제 번호와 분리하고 영상 전체에서 각각 순번을 붙인다',async()=>{
+ const cues=[
+  {id:0,start:1,text:'1번 문제를 풀자'},
+  {id:1,start:20,text:'어제 선생님이 길을 잘못 들어서 말이야'},
+  {id:2,start:35,text:'지금 캡처 구간이야'},
+  {id:3,start:60,text:'다른 이야긴데 주말에 있었던 일이야'},
+  {id:4,start:90,text:'여기 캡쳐해 둬'},
+  {id:5,start:100,text:'다음 문제를 보자'}
+ ];
+ const item=(i,kind,number=null)=>({cue_id:i,kind,number,title:'구간 설명',evidence:cues[i].text,confidence:'high'});
+ const items=[item(0,'problem','1'),item(1,'smalltalk'),item(2,'capture'),item(3,'smalltalk'),item(4,'capture'),item(5,'problem')];
+ const result=validateAnalysis({items},cues);
+ assert.deepEqual(result.rows.map(r=>r[0]),['1','잡담1','캡쳐구간1','잡담2','캡쳐구간2','번호 확인 필요']);assert.equal(result.needs_check,1);
+ assert.throws(()=>validateAnalysis({items:[{...item(1,'smalltalk'),number:'2'}]},cues));
+ assert.throws(()=>validateAnalysis({items:[item(1,'capture')]},cues));
+ assert.throws(()=>validateAnalysis({items:[item(1,'unknown')]},cues));
+ const time=sec=>`00:${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}.000`;
+ const long='WEBVTT\n\n'+Array.from({length:2400},(_,i)=>`${time(i)} --> ${time(i+1)}\n다른 이야긴데 주말에 있었던 일을 말할게. 여기 캡처해 둬. 자막 구간을 나누어도 영상 전체의 순번은 이어져야 해.\n`).join('\n');
+ let calls=0;
+ const ai=new TimelineAI({anthropicKey:'test'},async(url,options)=>{
+  calls++;const captions=JSON.parse(JSON.parse(options.body).messages[0].content).captions;
+  const items=[{cue_id:captions[0].id,kind:'smalltalk',number:null,title:'주말 이야기',evidence:'다른 이야긴데',confidence:'high'},{cue_id:captions.at(-1).id,kind:'capture',number:null,title:'화면 캡처 안내',evidence:'여기 캡처해 둬',confidence:'high'}];
+  return Response.json({stop_reason:'end_turn',content:[{type:'text',text:JSON.stringify({items})}]});
+ });
+ const full=await ai.analyze(long,{});assert.ok(calls>1);
+ assert.deepEqual(full.rows.map(r=>r[0]),Array.from({length:calls},(_,i)=>['잡담'+(i+1),'캡쳐구간'+(i+1)]).flat());assert.equal(full.needs_check,0);
 });
