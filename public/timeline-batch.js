@@ -26,14 +26,16 @@ function bindTimelineBatch(){
  if($('#generate-selected-timelines'))$('#generate-selected-timelines').onclick=()=>openTimelineBatch([...selectedTeacherVideoIds]);
  if($('#timeline-batch-panel')){bindTimelineJobActions();refreshTimelineBatch()}
 }
-function openTimelineBatch(ids){
+async function openTimelineBatch(ids){
  if(!ids.length)return;
  if(ids.length>20){toast('한 번에 최대 20개까지 선택해주세요.');return}
+ try{await refreshTeacher()}catch(error){toast(error.message);return}
  if(!managedData.ai?.configured){toast('Claude API 키를 먼저 설정해주세요.');return}
  if(!managedData.youtube?.captions_enabled){openCaptionPermission();return}
- const localDraftIds=ids.filter(id=>timelineDrafts[id]?.length),eligible=ids.filter(id=>!localDraftIds.includes(id));
- if(!eligible.length){toast('선택한 영상에 편집 중인 초안이 있어요. 먼저 임시 저장해주세요.');return}
- openModal(`<h2 id="modal-title">선택 영상 타임라인 생성</h2><p>${eligible.length}개 영상을 접수하고 순서대로 분석해요. 영상별 Claude API 사용료가 발생해요.</p><p class="source-note">기존 타임라인·초안은 건너뛰며, 생성 결과는 학생에게 공개되지 않아요. 자막을 가져올 수 없는 영상은 실패로 표시하고 다음 영상으로 넘어가요.${localDraftIds.length?' 편집 중인 '+localDraftIds.length+'개는 이번 요청에서 제외해요.':''}</p><ul class="batch-confirm-list">${eligible.map(id=>`<li>${esc(teacherVideo(id)?.title||id)}</li>`).join('')}</ul><p class="form-error" id="timeline-batch-error" role="alert"></p><div class="modal-actions"><button class="btn" id="timeline-batch-dismiss">취소</button><button class="btn primary" id="timeline-batch-submit">${eligible.length}개 초안 생성</button></div>`);
+ const completedIds=ids.filter(id=>{const video=teacherVideo(id);return video?.timeline_draft?.length||video?.timeline?.length});
+ const localDraftIds=ids.filter(id=>!completedIds.includes(id)&&timelineDirtyIds.has(id)&&timelineDrafts[id]?.length),eligible=ids.filter(id=>!completedIds.includes(id)&&!localDraftIds.includes(id));
+ if(!eligible.length){toast(completedIds.length===ids.length?'선택한 영상은 모두 이미 분석이 완료됐어요.':"진행할 영상이 없어요. 편집 중인 초안을 먼저 저장해주세요.");return}
+ openModal(`<h2 id="modal-title">선택 영상 타임라인 생성</h2><p>${completedIds.length?`${completedIds.length}건은 이미 분석이 완료됐습니다. 나머지 ${eligible.length}건만 진행하시겠습니까?`:`${eligible.length}개 영상의 타임라인 분석을 진행하시겠습니까?`}</p><p class="source-note">확인하면 ${eligible.length}개만 순서대로 분석해요. 영상별 Claude API 사용료가 발생해요.</p><p class="source-note">기존 타임라인·초안은 건너뛰며, 생성 결과는 학생에게 공개되지 않아요. 자막을 가져올 수 없는 영상은 실패로 표시하고 다음 영상으로 넘어가요.${localDraftIds.length?' 편집 중인 '+localDraftIds.length+'개는 이번 요청에서 제외해요.':''}</p><ul class="batch-confirm-list">${eligible.map(id=>`<li>${esc(teacherVideo(id)?.title||id)}</li>`).join('')}</ul><p class="form-error" id="timeline-batch-error" role="alert"></p><div class="modal-actions"><button class="btn" id="timeline-batch-dismiss">취소</button><button class="btn primary" id="timeline-batch-submit">확인 · ${eligible.length}개 분석</button></div>`);
  $('#timeline-batch-dismiss').onclick=closeModal;
  $('#timeline-batch-submit').onclick=async e=>{const button=e.currentTarget;button.disabled=true;try{const result=await requestAPI('/api/teacher/timeline/batch',{ids:eligible});selectedTeacherVideoIds.clear();closeModal();render();toast(`${result.jobs.filter(j=>j.status==='queued').length}개를 분석 대기에 추가했어요.`)}catch(error){if($('#timeline-batch-error'))$('#timeline-batch-error').textContent=error.message;button.disabled=false}};
 }

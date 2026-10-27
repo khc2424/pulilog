@@ -13,7 +13,7 @@ test('작업 제목은 타임라인 편집으로 연결하고 빈 화면 캐시�
 });
 
 test('검토 완료는 저장 성공 후 목록으로 돌아가고 작업을 숨기며 임시 저장과 오류는 편집 화면을 유지한다',async()=>{
- const source=await readFile(new URL('../public/teacher.js',import.meta.url),'utf8');
+ const source=(await readFile(new URL('../public/teacher.js',import.meta.url),'utf8')).replaceAll('\r','');
  const action=source.slice(source.indexOf('async function saveTeacherTimeline('),source.indexOf('function timeToSeconds('));
  let returned=0,renders=0,fail=false;const calls=[],status={textContent:''};
  const context={selectedCourseId:'video',readTimelineRows:()=>[['',0,'설명','00:10',10]],timelineDrafts:{video:[1]},timelineDirtyIds:new Set(['video']),timelineBatchJobs:[{video_id:'video'},{video_id:'other'}],requestAPI:async(path,data)=>{calls.push(data);if(fail)throw new Error('저장 실패')},refreshTeacher:async()=>{},returnFromTeacherCourse:()=>{returned++},render:()=>{renders++},toast:()=>{},$:()=>status};
@@ -26,6 +26,23 @@ test('검토 완료는 저장 성공 후 목록으로 돌아가고 작업을 숨
 test('강의 영상 팝업은 전용 레이아웃과 별도 타임라인 스크롤 영역을 사용한다',async()=>{
  const source=await readFile(new URL('../public/accounts.js',import.meta.url),'utf8');
  const action=source.slice(source.indexOf('async function openCourse('),source.indexOf("document.addEventListener('click'",source.indexOf('async function openCourse(')));
- let html='',layout='';const context={refreshStudent:async()=>{},signedStudent:{id:1},libraryVideos:[{id:'video',title:'강의',book:'교재',subject:'과목',unit:'단원',timeline:[['1',0,'설명','00:10',10]]}],esc:String,timelineDescription:r=>r[2],openModal:(text,kind)=>{html=text;layout=kind},toast:()=>{}};
+ let html='',layout='';const context={location:{origin:'http://localhost'},refreshStudent:async()=>{},signedStudent:{id:1},libraryVideos:[{id:'video',title:'강의',book:'교재',subject:'과목',unit:'단원',timeline:[['1',0,'설명','00:10',10]]}],esc:String,timelineDescription:r=>r[2],openModal:(text,kind)=>{html=text;layout=kind},toast:()=>{}};
  runInNewContext(action,context);await context.openCourse('video');assert.equal(layout,'lesson');assert.ok(html.includes('lesson-modal-layout'));assert.ok(html.includes('lesson-main'));assert.ok(html.includes('lesson-timeline-scroll'));assert.equal((html.match(/id="lesson-player"/g)||[]).length,1);assert.equal((html.match(/id="original-video-link"/g)||[]).length,1);
+});
+
+test('20개 중 완료된 6개는 확인창과 요청에서 제외하고 나머지 14개만 접수한다',async()=>{
+ const source=await readFile(new URL('../public/timeline-batch.js',import.meta.url),'utf8'),action=source.slice(source.indexOf('async function openTimelineBatch('));
+ const videos=Array.from({length:20},(_,i)=>({id:'v'+i,title:'강의'+i,timeline:[],timeline_draft:i<6?[['완료']]:null}));
+ let html='',sent;const nodes=Object.fromEntries(['#timeline-batch-submit','#timeline-batch-dismiss','#timeline-batch-error'].map(k=>[k,{disabled:false}]));
+ const context={refreshTeacher:async()=>{},managedData:{ai:{configured:true},youtube:{captions_enabled:true}},teacherVideo:id=>videos.find(v=>v.id===id),timelineDrafts:{},timelineDirtyIds:new Set(),selectedTeacherVideoIds:new Set(),openModal:text=>html=text,$:id=>nodes[id],esc:String,closeModal:()=>{},render:()=>{},toast:()=>{},requestAPI:async(path,data)=>{sent=data.ids;return {jobs:data.ids.map(id=>({video_id:id,status:'queued'}))}}};
+ runInNewContext(action,context);await context.openTimelineBatch(videos.map(v=>v.id));assert.ok(html.includes('6건은 이미 분석이 완료됐습니다. 나머지 14건만 진행하시겠습니까?'));
+ await nodes['#timeline-batch-submit'].onclick({currentTarget:nodes['#timeline-batch-submit']});assert.equal(sent.length,14);assert.ok(sent.every(id=>Number(id.slice(1))>=6));
+});
+
+test('강의 관리 메뉴는 상세 화면과 검색·필터 상태를 비우고 전체 목록을 다시 연다',async()=>{
+ const source=(await readFile(new URL('../public/teacher.js',import.meta.url),'utf8')).replaceAll('\r','');
+ const start=source.indexOf("document.addEventListener('click',e=>{\n const link=e.target.closest('#nav"),end=source.indexOf("document.addEventListener('input'",start);
+ let click,rendered=0,prevented=0;const context={document:{addEventListener:(type,fn)=>click=fn},selectedCourseId:'video',teacherCourseFilter:'review',teacherCourseSearch:'검색',teacherCourseYear:'2026',teacherCourseClasses:new Set(['A']),teacherCourseMissing:new Set(['book']),selectedTeacherVideoIds:new Set(['video']),location:{hash:'#courses'},render:()=>{rendered++},window:{scrollTo:()=>{}}};
+ runInNewContext(source.slice(start,end),context);click({target:{closest:()=>({})},preventDefault:()=>{prevented++}});
+ assert.equal(context.selectedCourseId,null);assert.equal(context.teacherCourseFilter,'all');assert.equal(context.teacherCourseSearch,'');assert.equal(context.teacherCourseYear,'all');assert.equal(context.selectedTeacherVideoIds.size,0);assert.equal(rendered,1);assert.equal(prevented,1);
 });

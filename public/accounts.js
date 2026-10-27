@@ -14,6 +14,7 @@ async function requestAPI(path, body){
 async function refreshStudent(){
  const session=await requestAPI('/api/session');signedStudent=session.student;teacherAuthorized=session.teacher;
  libraryVideos=signedStudent?(await requestAPI('/api/videos')).videos:[];
+ if(typeof syncStudentPresence==='function')syncStudentPresence();
 }
 async function refreshTeacher(){managedData=await requestAPI('/api/teacher/state')}
 function normalizeSearch(s){return String(s).normalize('NFKC').toLowerCase().replace(/\s+/g,'')}
@@ -41,10 +42,12 @@ function studentLibraryView(){
  <div class="catalog-toolbar"><div class="catalog-tabs"><button class="filter ${!favoriteOnly?'active':''}" data-library-view="all">전체 강의 <span>${libraryVideos.length}</span></button><button class="filter ${favoriteOnly?'active':''}" data-library-view="favorites">★ 즐겨찾기 <span>${libraryVideos.filter(v=>v.favorite).length}</span></button></div><div class="catalog-search"><span aria-hidden="true">⌕</span><input id="catalog-search" type="search" aria-label="강의 제목 검색" placeholder="교재, 과목, 단원 또는 영상 제목 검색" value="${esc(catalogSearch)}"></div><div class="catalog-filters">${filterSelect('book-filter','교재','book',bookFilter)}${filterSelect('subject-filter','과목','subject',subjectFilter)}${filterSelect('unit-filter','단원','unit',unitFilter)}</div></div>
  <div class="section-row"><h2>${favoriteOnly?'즐겨찾는 강의':'우리 반 강의'} <span class="library-count">${videos.length}</span></h2><span class="sample-tag">유튜브 최신 게시 순 · NEW는 사이트 추가 후 7일</span></div>
  <div class="library-grid">${videos.map(card).join('')}</div>${!videos.length?`<div class="card empty-state"><span class="empty-icon">${favoriteOnly?'☆':'▷'}</span><h3>${favoriteOnly?'아직 즐겨찾는 강의가 없어요.':libraryVideos.length?'검색 조건에 맞는 강의가 없어요.':'우리 반에 등록된 강의가 아직 없어요.'}</h3><p>${favoriteOnly?'강의 제목 오른쪽의 별을 눌러 모아보세요.':libraryVideos.length?'제목의 일부로 검색하거나 필터를 바꿔보세요.':'선생님이 이 반의 영상을 등록하면 여기에 표시돼요.'}</p></div>`:''}
- <p class="source-note">강의를 열고 문제별 타임라인으로 필요한 풀이를 바로 찾아보세요.</p>`;
+ <p class="source-note">강의를 열고 문제별 타임라인으로 필요한 풀이를 바로 찾아보세요. 접속 상태와 영상 재생 위치는 선생님에게 표시돼요.</p>`;
 }
 
 function renderApplication(){
+ document.body.classList.toggle('course-list-mode',!studentMode&&teacherAuthorized&&page==='courses'&&!selectedCourseId);
+ if(typeof syncStudentPresence==='function')syncStudentPresence();
  if(!paths[page])page='overview';
  document.body.classList.toggle('login-mode',!accountReady||(studentMode?!signedStudent:!teacherAuthorized));
  nav();
@@ -110,7 +113,8 @@ async function openCourse(id){
  if(!signedStudent){render();toast('다시 로그인해주세요.');return}
  const v=libraryVideos.find(v=>v.id===id);if(!v){toast('이 반에서 볼 수 없는 영상이에요.');return}
  const rows=v.timeline;
- openModal(`<div class="lesson-modal-layout"><div class="lesson-main"><header class="lesson-header"><h2 id="modal-title">${esc(v.title)}</h2><p class="subtitle">${esc(v.book)} · ${esc(v.subject)} · ${esc(v.unit)}</p></header><div class="lesson-video-stage"><iframe id="lesson-player" class="embedded-video" src="https://www.youtube.com/embed/${esc(v.id)}?start=0" title="${esc(v.title)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe><p id="playing-position" class="playing-position" role="status">전체 강의</p></div><div class="lesson-original"><a id="original-video-link" class="btn" href="https://www.youtube.com/watch?v=${esc(v.id)}" target="_blank" rel="noopener noreferrer">유튜브에서 열기 ↗</a></div></div><section class="video-timeline lesson-timeline" aria-label="강의 타임라인"><div class="timeline-heading"><h3>강의 타임라인</h3><span>${rows.length}개</span></div><p class="timeline-help">문제·잡담·캡쳐구간이나 시간을 누르면 해당 지점부터 재생돼요.</p><div class="lesson-timeline-scroll" tabindex="0" role="region" aria-label="강의 타임라인 목록">${rows.length?rows.map(([n,p,t,label,sec])=>`<button class="timeline-row ${/^(잡담|캡쳐구간)\d+$/.test(n)?'timeline-marked':''}" data-course-seek="${sec}" data-course-id="${esc(v.id)}" data-course-title="${esc(timelineDescription([n,p,t]))}"><span class="timeline-topic">${esc(timelineDescription([n,p,t]))}</span><span class="timeline-time">${esc(label)} ▷</span></button>`).join(''):'<div class="empty-state">아직 등록된 타임라인이 없어요. 전체 강의를 먼저 볼 수 있어요.</div>'}</div></section></div>`,'lesson');
+ openModal(`<div class="lesson-modal-layout"><div class="lesson-main"><header class="lesson-header"><h2 id="modal-title">${esc(v.title)}</h2><p class="subtitle">${esc(v.book)} · ${esc(v.subject)} · ${esc(v.unit)}</p></header><div class="lesson-video-stage"><iframe id="lesson-player" class="embedded-video" src="https://www.youtube.com/embed/${esc(v.id)}?start=0&enablejsapi=1&playsinline=1&origin=${encodeURIComponent(location.origin)}" title="${esc(v.title)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe><p id="playing-position" class="playing-position" role="status">전체 강의</p></div><div class="lesson-original"><a id="original-video-link" class="btn" href="https://www.youtube.com/watch?v=${esc(v.id)}" target="_blank" rel="noopener noreferrer">유튜브에서 열기 ↗</a></div></div><section class="video-timeline lesson-timeline" aria-label="강의 타임라인"><div class="timeline-heading"><h3>강의 타임라인</h3><span>${rows.length}개</span></div><p class="timeline-help">문제·잡담·캡쳐구간이나 시간을 누르면 해당 지점부터 재생돼요.</p><div class="lesson-timeline-scroll" tabindex="0" role="region" aria-label="강의 타임라인 목록">${rows.length?rows.map(([n,p,t,label,sec])=>`<button class="timeline-row ${/^(잡담|캡쳐구간)\d+$/.test(n)?'timeline-marked':''}" data-course-seek="${sec}" data-course-id="${esc(v.id)}" data-course-title="${esc(timelineDescription([n,p,t]))}"><span class="timeline-topic">${esc(timelineDescription([n,p,t]))}</span><span class="timeline-time">${esc(label)} ▷</span></button>`).join(''):'<div class="empty-state">아직 등록된 타임라인이 없어요. 전체 강의를 먼저 볼 수 있어요.</div>'}</div></section></div>`,'lesson');
+ if(typeof startLessonTracking==='function')startLessonTracking(v.id);
 }
 
 document.addEventListener('click',async e=>{
@@ -123,7 +127,7 @@ document.addEventListener('click',async e=>{
  }
  if(el.dataset.courseSeek!==undefined){
   if(!libraryVideos.some(v=>v.id===el.dataset.courseId))return;
-  const sec=Number(el.dataset.courseSeek);$('#lesson-player').src=`https://www.youtube.com/embed/${el.dataset.courseId}?start=${sec}&autoplay=1`;
+  const sec=Number(el.dataset.courseSeek);if(typeof seekTrackedLesson!=='function'||!seekTrackedLesson(sec))$('#lesson-player').src=`https://www.youtube.com/embed/${el.dataset.courseId}?start=${sec}&autoplay=1&enablejsapi=1&playsinline=1&origin=${encodeURIComponent(location.origin)}`;
   $('#playing-position').textContent='선택한 구간 · '+el.dataset.courseTitle;
   $('#original-video-link').href=`https://www.youtube.com/watch?v=${el.dataset.courseId}&t=${sec}s`;
   document.querySelectorAll('[data-course-seek]').forEach(row=>{const active=row===el;row.classList.toggle('active',active);if(active)row.setAttribute('aria-current','true');else row.removeAttribute('aria-current')});

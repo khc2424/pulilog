@@ -26,3 +26,9 @@ function timelineAIEvidence(video){
  const info=video.ai_analysis;if(!info)return '';
  return `<details class="card" style="margin-bottom:18px"><summary>AI 분석 근거 · 확인 필요 ${(info.evidence||[]).filter(item=>item.confidence!=='high').length}개${info.skipped_count?' · 제외 '+info.skipped_count+'개':''}</summary>${info.skipped_count?`<div class="notice">자막 근거를 확인하지 못한 ${info.skipped_count}개 후보는 초안에서 제외했어요. 누락된 구간이 있는지 영상을 대조해주세요.</div>`:''}${info.aligned_count?`<p class="source-note">인접한 자막·문장부호를 대조해 ${info.aligned_count}개 구간의 근거를 맞췄어요. 해당 구간은 검토 필요로 표시해요.</p>`:''}<p class="source-note">${esc(new Date(info.created_at).toLocaleString('ko-KR'))} · ${esc(info.model)} · 자막에 나온 시각을 기준으로 만든 초안이에요. 영상과 대조해 확인해주세요.</p>${(info.evidence||[]).map(item=>`<div class="note-item"><b>${esc(item.title||timelineDescription([item.number,0,'수업 설명']))} · ${esc(item.time)} · ${item.confidence==='high'?'근거 확인':'검토 필요'}</b><small>${esc(item.text)}</small></div>`).join('')}</details>`;
 }
+
+function youtubeCommentStatus(video){
+ if(!managedData.youtube?.timeline_comments_auto&&!video.youtube_comment)return '';
+ const state=video.youtube_comment||{};
+ return `<section class="notice" style="margin-bottom:18px"><b>유튜브 타임라인 댓글</b><p class="source-note">${state.status==='done'?'게시 완료 · 다시 검토 완료하면 같은 댓글을 수정해요.':state.status==='failed'?'게시 확인 필요 · '+esc(state.error):'검토 완료 시 학생에게 반영한 타임라인을 댓글로 자동 게시해요.'}</p>${state.comment_id?`<a class="text-link" href="https://www.youtube.com/watch?v=${esc(video.id)}&lc=${encodeURIComponent(state.comment_id)}" target="_blank" rel="noopener">댓글 확인 ↗</a>`:''}${state.status==='failed'?`<button class="btn small" data-youtube-comment-sync="${esc(video.id)}">댓글 다시 반영</button>`:''}</section>`;
+}

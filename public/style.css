@@ -151,3 +151,9 @@ body.sidebar-collapsed .topbar{padding-left:72px}
 .batch-title-link{font-size:12px;line-height:1.8}.batch-title-link:hover{text-decoration:underline}
 
 .lesson-modal .timeline-heading{padding-right:30px}
+.presence-card{margin-bottom:20px}.presence-card .card-header{flex-wrap:wrap}.presence-card td:nth-child(3){max-width:380px;overflow-wrap:anywhere}.presence-card .source-note{margin-top:14px}
+.course-list-mode main{height:calc(100dvh - 77px);min-height:0;padding-top:24px;padding-bottom:20px;overflow:hidden}.course-list-mode footer{display:none}
+.course-manager{height:100%;min-height:0;display:flex;flex-direction:column;gap:14px}.course-manager>.page-heading{margin:0;flex-shrink:0}.course-manager>.teacher-toolbar{margin:0;flex-shrink:0}
+.course-manager>.course-checkbox-filter{flex-shrink:0;max-height:23dvh;overflow:auto;margin:0}.course-manager>#timeline-batch-panel{max-height:26dvh;overflow-y:auto;flex-shrink:1;min-height:0}.course-manager>#timeline-batch-panel:empty{display:none}.course-manager .timeline-batch-card{margin:0!important}
+.teacher-course-list{flex:1;min-height:140px;display:flex;flex-direction:column;overflow:hidden}.teacher-course-list>.card-header{flex-shrink:0;margin-bottom:14px;flex-wrap:wrap}.teacher-course-scroll{min-height:0;flex:1;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}.teacher-course-scroll thead th{position:sticky;top:0;z-index:2;background:#F5F6F3}.teacher-course-scroll:focus-visible{outline:2px solid #AFC7C1;outline-offset:-2px}
+@media(max-width:650px){.course-list-mode main{padding-top:16px;padding-bottom:12px}.course-manager{gap:10px}.teacher-course-list{padding:14px}.course-list-mode .teacher-toolbar{gap:10px}.course-manager>.course-checkbox-filter{max-height:20dvh}}

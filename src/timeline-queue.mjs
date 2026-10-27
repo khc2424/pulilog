@@ -13,7 +13,8 @@ export class TimelineQueue {
  async dismissReviewed(videoId){await this.store.put('settings',{key:'youtube_timeline_reviewed_'+videoId,value:new Date().toISOString()})}
  async list(){
   await this.ready();const reviewed=new Map((await this.store.all('settings')).filter(r=>r.key.startsWith('youtube_timeline_reviewed_')).map(r=>[r.key.slice('youtube_timeline_reviewed_'.length),r.value]));
-  const jobs=(await this.rows()).filter(job=>!reviewed.has(job.video_id)||job.created_at>reviewed.get(job.video_id));
+  const latest=new Map();for(const job of await this.rows())latest.set(job.video_id,job);
+  const jobs=[...latest.values()].filter(job=>job.status!=='skipped'&&(!reviewed.has(job.video_id)||job.created_at>reviewed.get(job.video_id)));
   return [...jobs.filter(active),...jobs.filter(j=>!active(j)).slice(-40)].sort((a,b)=>b.created_at.localeCompare(a.created_at)||b.id.localeCompare(a.id));
  }
  enqueue(videos){
@@ -24,7 +25,8 @@ export class TimelineQueue {
    let sequence=Math.max(Date.now(),...jobs.map(j=>j.sequence||Date.parse(j.created_at)||0));
    for(const video of videos){
     if(ids.has(video.id))continue;ids.add(video.id);
-    const exists=!!(video.timeline_draft?.length||video.timeline?.length),job={id:randomUUID(),video_id:video.id,title:video.title,sequence:++sequence,status:exists?'skipped':'queued',error:exists?'이미 타임라인이나 초안이 있어 건너뛰었어요.':'',created_at:new Date().toISOString()};
+    if(video.timeline_draft?.length||video.timeline?.length)continue;
+    const job={id:randomUUID(),video_id:video.id,title:video.title,sequence:++sequence,status:'queued',error:'',created_at:new Date().toISOString()};
     created.push(await this.save(job));
    }
    this.kick();return created;

@@ -12,7 +12,8 @@ test('강의 관리에서 2026년을 기본 표시하고 전체·날짜 미확�
    {id:'b',title:'지난영상',youtube_year:2025,timeline:[]},
    {id:'c',title:'수동영상',youtube_year:null,timeline:[]}
   ]}};
- runInNewContext(view,context);
+ const countHelper=source.slice(source.indexOf('function countedMissing('),source.indexOf('const teacherVideo='));
+ context.teacherIncludeOlderMissing=false;runInNewContext(countHelper+view,context);
  let html=context.teacherCourses();assert.ok(html.includes('올해영상'));assert.ok(!html.includes('지난영상'));assert.ok(!html.includes('수동영상'));
  context.teacherCourseYear='all';html=context.teacherCourses();assert.ok(html.includes('지난영상'));assert.ok(html.includes('수동영상'));
  context.teacherCourseYear='unknown';html=context.teacherCourses();assert.ok(html.includes('수동영상'));assert.ok(!html.includes('올해영상'));
@@ -111,4 +112,15 @@ test('한글 조합 중에는 검색 화면을 교체하지 않고 완성 후 �
   input.oninput({ isComposing: false });
   assert.equal(query, '');
   assert.equal(renders, 2);
+});
+
+test('미분류 카운트는 한국시간 기준일 이후 게시 영상만 세고 과거 영상은 따로 볼 수 있다',async()=>{
+ const source=await readFile(new URL('../public/teacher.js',import.meta.url),'utf8');
+ const context={managedData:{unclassified_count_since:'2026-10-27'},classificationMissing:v=>!v.complete};
+ runInNewContext(source.slice(source.indexOf('function countedMissing('),source.indexOf('const teacherVideo=')),context);
+ assert.equal(context.countedMissing({youtube_published_at:'2026-10-26T14:59:59Z'}),false);
+ assert.equal(context.countedMissing({youtube_published_at:'2026-10-26T15:00:00Z'}),true);
+ assert.equal(context.countedMissing({youtube_published_at:'2025-01-01T00:00:00Z',added_at:Date.parse('2026-10-27T00:00:00Z')/1000}),false);
+ assert.equal(context.countedMissing({added_at:Date.parse('2026-10-27T00:00:00Z')/1000}),true);
+ assert.equal(context.countedMissing({complete:true,youtube_published_at:'2026-10-27T00:00:00Z'}),false);
 });

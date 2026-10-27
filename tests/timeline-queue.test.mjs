@@ -17,7 +17,7 @@ test('선택 영상은 하나씩 처리하며 중복·기존 초안을 건너뛰
   await queue.cancel(created.find(j=>j.video_id==='cancel').id);release();
   await until(async()=>!(await queue.list()).some(j=>['queued','running'].includes(j.status)));
   assert.deepEqual(calls,['first','bad','last']);assert.equal(maxRunning,1);
-  const statuses=Object.fromEntries((await queue.list()).map(j=>[j.video_id,j.status]));assert.deepEqual(statuses,{old:'skipped',last:'done',bad:'failed',cancel:'cancelled',first:'done'});
+  const statuses=Object.fromEntries((await queue.list()).map(j=>[j.video_id,j.status]));assert.deepEqual(statuses,{last:'done',bad:'failed',cancel:'cancelled',first:'done'});
   await assert.rejects(queue.enqueue(Array.from({length:21},(_,i)=>video(String(i)))),/20개/);
  }finally{queue.close();store.close()}
 });
@@ -58,5 +58,14 @@ test('검토 완료한 영상의 작업은 목록에서 사라지고 새로 접�
   assert.equal((await queue.list()).length,1);await queue.dismissReviewed('video');assert.equal((await queue.list()).length,0);
   await store.put('settings',{key:'youtube_timeline_job_new',value:{id:'new',video_id:'video',title:'강의',status:'queued',created_at:'2099-01-01T00:00:00Z'}});
   assert.equal((await queue.list()).length,1);assert.equal((await queue.list())[0].id,'new');
+ }finally{queue.close();store.close()}
+});
+
+test('실패 후 재요청을 접수하면 기존 실패 대신 새 작업 하나만 목록에 표시한다',async()=>{
+ const store=new LocalStore(':memory:'),queue=new TimelineQueue(store,async()=>({rows:[],analysis:{}}),()=>true);
+ try{
+  await store.put('settings',{key:'youtube_timeline_job_old-failed',value:{id:'old-failed',video_id:'retry-video',title:'실패한 수업',status:'failed',created_at:'2026-10-26T00:00:00Z',sequence:1,error:'이전 오류'}});
+  const [newJob]=await queue.enqueue([video('retry-video')]);const rows=await queue.list();assert.equal(rows.length,1);assert.equal(rows[0].id,newJob.id);assert.equal(rows[0].status,'queued');assert.notEqual(rows[0].id,'old-failed');
+  await queue.save({...newJob,status:'failed',error:'새 오류'});assert.equal((await queue.list()).length,1);assert.equal((await queue.list())[0].error,'새 오류');
  }finally{queue.close();store.close()}
 });
