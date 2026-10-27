@@ -94,7 +94,7 @@ export function createApp(cfg,store,options={}){
     check(!req.headers['content-length']||Number(req.headers['content-length'])<=MAX_PDF_BYTES,'PDF는 50MB 이하로 선택해주세요.',413);
     books.uploading=true;try{let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;check(size<=MAX_PDF_BYTES,'PDF는 50MB 이하로 선택해주세요.',413);chunks.push(chunk)}return send(res,200,{book:await books.upload(Object.fromEntries(url.searchParams),Buffer.concat(chunks))})}finally{books.uploading=false}
    }
-   const d=await body(req,path==='/api/teacher/timeline/analyze'?500000:100000);
+   const d=await body(req,path==='/api/teacher/timeline/analyze'?6*1024*1024:100000);
    if(path==='/api/login'||path==='/api/teacher/login'){
     await rate(req,path);
     if(path==='/api/teacher/login'){check(timingSafeEqual(Buffer.from(hash(String(d.code||''))),Buffer.from(hash(cfg.adminCode))),'선생님 접속 코드를 확인해주세요.',401);return send(res,200,{ok:true},await newSession('teacher'))}

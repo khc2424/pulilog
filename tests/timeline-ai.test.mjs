@@ -13,7 +13,7 @@ test('SRT/VTT 시간을 유지하고 근거 없는 시간·본문·문제 번호
  const cues=parseCaptions(subtitles);assert.equal(cues[0].start,1);assert.equal(cues[1].start,35);
  const srt=parseCaptions('1\n01:02:03,400 --> 01:02:05,000\n<b>123번</b> 풀이\n');assert.equal(srt[0].start,3723);assert.equal(srt[0].text,'123번 풀이');
  assert.throws(()=>parseCaptions('문제 1번: 35초'));assert.throws(()=>parseCaptions(subtitles.replace('00:00:35','00:61:35')));
- assert.throws(()=>parseCaptions('a'.repeat(240001)));
+ assert.throws(()=>parseCaptions('a'.repeat(2*1024*1024+1)));
  const result=validateAnalysis(answer,cues);assert.equal(result.rows[0][4],1);assert.equal(result.rows[1][0],'번호 확인 필요');assert.equal(result.needs_check,1);
  for(const changed of [{cue_id:999},{evidence:'원문에 없는 말'},{number:'1000000'},{title:''}])assert.throws(()=>validateAnalysis({items:[{...answer.items[0],...changed}]},cues));
 });
@@ -62,4 +62,27 @@ test('기존 읽기 권한은 유지하고 자막 연결을 선택할 때만 넓
   await yt.save({access_token:'private',expires:Date.now()/1000+3600,scopes:[]});await assert.rejects(yt.downloadCaptions('Video000001'),/권한/);
   await yt.save({access_token:'private',expires:Date.now()/1000+3600,scopes:['https://www.googleapis.com/auth/youtube.force-ssl']});assert.equal((await yt.downloadCaptions('Video000001')).text,subtitles);
  }finally{store.close()}
+});
+
+test('90분 한국어 자막은 240KB를 넘어도 자동 분할하고 원래 시간을 유지한다',async()=>{
+ const time=sec=>`${String(Math.floor(sec/3600)).padStart(2,'0')}:${String(Math.floor(sec/60)%60).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}.000`;
+ const long='WEBVTT\n\n'+Array.from({length:5400},(_,i)=>`${time(i)} --> ${time(i+1)}\n${i+1}번 문제를 살펴보자. 이 부분은 계산 과정을 확인하고 다음 풀이로 넘어갈게.\n`).join('\n');
+ assert.ok(Buffer.byteLength(long)>240000);assert.equal(parseCaptions(long).length,5400);
+ let calls=0,lastId=-1;
+ const ai=new TimelineAI({anthropicKey:'test'},async(url,options)=>{
+  const cues=JSON.parse(JSON.parse(options.body).messages[0].content).captions;
+  assert.ok(cues[0].id>lastId);lastId=cues.at(-1).id;calls++;
+  const cue=cues[0];return Response.json({stop_reason:'end_turn',content:[{type:'text',text:JSON.stringify({items:[{cue_id:cue.id,number:String(cue.id+1),title:'문제 풀이',evidence:`${cue.id+1}번 문제`,confidence:'high'}]})}],usage:{input_tokens:100,output_tokens:20}});
+ });
+ const result=await ai.analyze(long,{title:'90분 강의'});
+ assert.ok(calls>1);assert.equal(result.chunk_count,calls);assert.equal(result.usage.input_tokens,100*calls);assert.equal(result.rows.length,calls);assert.ok(result.rows.at(-1)[4]>3600);assert.equal(result.cue_count,5400);
+ const cfg={origin:'http://127.0.0.1',sessionSecret:'test',adminCode:'2424',driver:'sqlite',anthropicKey:'test'},store=new LocalStore(':memory:');
+ const app=createApp(cfg,store,{aiFetch:ai.fetcher});await new Promise(r=>app.listen(0,'127.0.0.1',r));cfg.origin=`http://127.0.0.1:${app.address().port}`;
+ const post=(path,data,cookie)=>fetch(cfg.origin+path,{method:'POST',headers:{'Content-Type':'application/json','X-AXIS-Request':'1',Origin:cfg.origin,...(cookie?{Cookie:cookie}:{})},body:JSON.stringify(data)});
+ try{
+  await store.saveVideo({id:'LongVideo01',title:'긴 강의',added_at:1,published:true,reviewed:false,timeline:[],timeline_draft:null},['테스트반']);
+  const login=await post('/api/teacher/login',{code:'2424'});const cookie=login.headers.get('set-cookie');
+  lastId=-1;const payload={id:'LongVideo01',captions:long,source:'file'};assert.ok(Buffer.byteLength(JSON.stringify(payload))>500000);
+  const response=await post('/api/teacher/timeline/analyze',payload,cookie);assert.equal(response.status,200);assert.ok((await response.json()).rows.length>1);
+ }finally{await new Promise(r=>app.close(r));store.close()}
 });

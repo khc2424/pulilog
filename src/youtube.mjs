@@ -1,3 +1,4 @@
+import { MAX_CAPTION_BYTES } from './timeline-ai.mjs';
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 
 import { classKey,canonicalClassName,titleClassAlias } from './classes.mjs';
@@ -105,7 +106,7 @@ export class YouTubeConnection {
   if(!tracks.length)fail('가져올 수 있는 자막이 없어요. YouTube Studio에서 SRT/VTT 자막을 내려받아 넣어주세요.');
   let response;try{response=await this.fetcher('https://www.googleapis.com/youtube/v3/captions/'+encodeURIComponent(tracks[0].id)+'?tfmt=vtt',{headers:{Authorization:'Bearer '+access},signal:AbortSignal.timeout(30000)})}catch{fail('자막 다운로드가 지연돼요. 다시 시도해주세요.')}
   if(!response.ok)fail('이 자막을 내려받을 수 없어요. YouTube Studio의 SRT/VTT 파일로 시험해주세요.');
-  const text=await response.text();if(Buffer.byteLength(text)>240000)fail('자막이 너무 커요. 한 수업 분량으로 나눠주세요.');
+  const text=await response.text();if(Buffer.byteLength(text)>MAX_CAPTION_BYTES)fail('자막이 2MB를 넘어요. 자막 파일을 확인해주세요.');
   return {text,source:'youtube',language:tracks[0].snippet.language};
  }
  async inspectVideos(ids){

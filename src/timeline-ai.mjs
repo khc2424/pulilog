@@ -1,12 +1,18 @@
 import {createHash} from 'node:crypto';
 
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status})};
+export const MAX_CAPTION_BYTES=2*1024*1024;
+export function captionChunks(cues){
+ const chunks=[];let chunk=[],bytes=0;
+ for(const cue of cues){const size=Buffer.byteLength(JSON.stringify(cue))+1;if(chunk.length&&bytes+size>120000){chunks.push(chunk);chunk=[];bytes=0}chunk.push(cue);bytes+=size}
+ if(chunk.length)chunks.push(chunk);return chunks;
+}
 const flat=text=>String(text).normalize('NFKC').replace(/\s+/g,'').toLowerCase();
 export const timelineFingerprint=v=>createHash('sha256').update(JSON.stringify([v.timeline,v.timeline_draft,v.reviewed])).digest('hex');
 const label=sec=>sec>=3600?`${Math.floor(sec/3600)}:${String(Math.floor(sec/60)%60).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`:`${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`;
 
 export function parseCaptions(text){
- if(typeof text!=='string'||Buffer.byteLength(text)>240000)fail('자막 파일은 240KB 이하로 넣어주세요.');
+ if(typeof text!=='string'||Buffer.byteLength(text)>MAX_CAPTION_BYTES)fail('자막 파일은 2MB 이하로 넣어주세요.');
  const lines=text.replace(/^\uFEFF/,'').replace(/\r/g,'').split('\n'),cues=[];
  const time=value=>{const parts=value.replace(',','.').split(':').map(Number);const [seconds,minutes,hours=0]=parts.reverse();if(parts.length<2||parts.length>3||parts.some(n=>!Number.isFinite(n)||n<0)||seconds>=60||minutes>=60)return NaN;return hours*3600+minutes*60+seconds};
  for(let i=0;i<lines.length;i++){
@@ -19,7 +25,7 @@ export function parseCaptions(text){
   if(content)cues.push({id:cues.length,start:Math.floor(start),end:Math.ceil(end),text:content});
  }
  if(!cues.length)fail('시간 정보가 있는 SRT 또는 VTT 자막을 넣어주세요.');
- if(cues.length>6000)fail('자막 항목이 너무 많아요. 한 수업 분량으로 나눠주세요.');
+ if(cues.length>20000)fail('자막 항목이 2만 개를 넘어요. 자막 파일이 맞는지 확인해주세요.');
  if(cues.some((c,i)=>i&&c.start<cues[i-1].start))fail('자막 시작 시간이 순서대로 정렬되어 있지 않아요.');
  return cues;
 }
@@ -54,12 +60,18 @@ export class TimelineAI {
   if(this.busy)fail('다른 영상 분석이 진행 중이에요. 완료 후 다시 시도해주세요.',429);
   const cues=parseCaptions(text);this.busy=true;
   try{
+   const chunks=captionChunks(cues),items=[];let usage=null;
+   for(const chunk of chunks){
    let response;
-   try{response=await this.fetcher('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':this.cfg.anthropicKey,'anthropic-version':'2023-06-01'},body:JSON.stringify({model:this.status().model,max_tokens:8000,system:instructions,messages:[{role:'user',content:JSON.stringify({lesson:{title:video.title,book:video.book,subject:video.subject,unit:video.unit},captions:cues})}],output_config:{format:{type:'json_schema',schema}}}),signal:AbortSignal.timeout(120000)})}catch{fail('AI 응답이 지연됐어요. 초안은 변경하지 않았어요.')}
+   try{response=await this.fetcher('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':this.cfg.anthropicKey,'anthropic-version':'2023-06-01'},body:JSON.stringify({model:this.status().model,max_tokens:8000,system:instructions,messages:[{role:'user',content:JSON.stringify({lesson:{title:video.title,book:video.book,subject:video.subject,unit:video.unit},captions:chunk})}],output_config:{format:{type:'json_schema',schema}}}),signal:AbortSignal.timeout(120000)})}catch{fail('AI 응답이 지연됐어요. 초안은 변경하지 않았어요.')}
    if(!response.ok){if(response.status===401||response.status===403)fail('Claude API 키와 이용 권한을 확인해주세요.');if(response.status===429)fail('Claude 사용 한도에 도달했어요. 잠시 후 다시 시도해주세요.',429);fail('Claude 모델 설정·결제 잔액·서비스 상태를 확인해주세요.')}
    const body=await response.json();if(body.stop_reason!=='end_turn')fail('AI 응답이 끝까지 완성되지 않았어요. 초안은 변경하지 않았어요.');
    let data;try{data=JSON.parse(body.content?.filter(c=>c.type==='text').map(c=>c.text).join('')||'')}catch{fail('AI 결과를 읽지 못했어요. 초안은 변경하지 않았어요.')}
-   return {...validateAnalysis(data,cues),cue_count:cues.length,model:this.status().model,usage:body.usage?{input_tokens:body.usage.input_tokens,output_tokens:body.usage.output_tokens}:null};
+   if(!Array.isArray(data.items))fail('분석 결과 형식이 올바르지 않아요. 기존 초안은 유지했어요.');
+   if(data.items.length){validateAnalysis(data,chunk);items.push(...data.items)}
+   if(body.usage){usage||={input_tokens:0,output_tokens:0};usage.input_tokens+=body.usage.input_tokens||0;usage.output_tokens+=body.usage.output_tokens||0}
+   }
+   return {...validateAnalysis({items},cues),cue_count:cues.length,chunk_count:chunks.length,model:this.status().model,usage};
   }finally{this.busy=false}
  }
 }
