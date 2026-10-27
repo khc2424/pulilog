@@ -116,3 +116,5 @@ body.sidebar-collapsed .topbar{padding-left:72px}
 .textbook-group{border:1px solid var(--line);border-radius:12px}.textbook-group .textbook-row:last-child{border-bottom:0}.textbook-group summary:hover{background:#EDF3F266}.textbook-groups{margin-top:16px}
 
 .timeline-row.timeline-marked{grid-template-columns:80px minmax(0,1fr) auto}.timeline-marked .timeline-number{font-size:11px;white-space:nowrap;color:#6B554D;background:#F0E9E4}
+
+.batch-confirm-list{max-height:240px;overflow:auto;padding-left:22px;font-size:13px;line-height:1.8}.timeline-batch-card summary{cursor:pointer;padding:12px 0}.timeline-batch-job{gap:18px}.timeline-batch-job>div:first-child{min-width:0;overflow-wrap:anywhere}.timeline-batch-job .heading-actions{flex-shrink:0}@media(max-width:650px){.timeline-batch-job{align-items:flex-start;flex-direction:column}}

@@ -1,3 +1,4 @@
+import { TimelineQueue } from './timeline-queue.mjs';
 import http from 'node:http';
 import { createHash,createHmac,randomBytes,timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -15,7 +16,7 @@ import { TimelineAI,timelineFingerprint,parseCaptions } from './timeline-ai.mjs'
 import { YouTubeAutoImport } from './youtube-auto.mjs';
 
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'../public');
-const assets=new Map([['/','index.html'],...['index.html','search.js','app.js','accounts.js','teacher.js','workbench.js','production.js','timeline-ai.js','curriculum.js','textbooks.js','style.css'].map(f=>['/'+f,f])]);
+const assets=new Map([['/','index.html'],...['index.html','search.js','app.js','accounts.js','teacher.js','workbench.js','production.js','timeline-ai.js','timeline-batch.js','curriculum.js','textbooks.js','style.css'].map(f=>['/'+f,f])]);
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const clean=(v,max=300)=>String(v??'').trim().slice(0,max);
 const check=(ok,message='입력 내용을 확인해주세요.',status=400)=>{if(!ok){const e=new Error(message);e.status=status;throw e}};
@@ -29,6 +30,24 @@ export function createApp(cfg,store,options={}){
  const youtube=new YouTubeConnection(cfg,store,options.youtubeFetch);
  const youtubeAuto=new YouTubeAutoImport(cfg,store,youtube);
  const timelineAI=new TimelineAI(cfg,options.aiFetch);
+ async function analyzeTimeline(d){
+    const id=clean(d.id,11),video=(await store.all('videos',{id}))[0];check(video,'영상을 찾을 수 없어요.',404);
+    check(!video.timeline_draft?.length||d.replace_draft===true,'기존 초안 교체에 동의한 뒤 다시 실행해주세요.');
+    const fingerprint=timelineFingerprint(video),result=await timelineAI.analyze(d.captions,video);
+    const latest=(await store.all('videos',{id}))[0];check(latest,'분석 중 영상이 삭제됐어요. 결과를 저장하지 않았어요.',404);
+    check(timelineFingerprint(latest)===fingerprint,'분석 중 타임라인이 변경되어 결과를 덮어쓰지 않았어요.',412);
+    const analysis={created_at:new Date().toISOString(),model:result.model,source:d.source==='youtube'?'youtube':'file',evidence:result.evidence,needs_check:result.needs_check,cue_count:result.cue_count,skipped_count:result.skipped_count||0,aligned_count:result.aligned_count||0,usage:result.usage};
+    await store.patch('videos',{id},{timeline_draft:result.rows,reviewed:false});
+    await store.put('settings',{key:'youtube_timeline_analysis_'+id,value:analysis});
+    return {rows:result.rows,analysis};
+ }
+ const timelineQueue=new TimelineQueue(store,async job=>{
+  const video=(await store.all('videos',{id:job.video_id}))[0];
+  if(!video)return {skipped:true,reason:'삭제된 영상이라 건너뛰었어요.'};
+  if(video.timeline_draft?.length||video.timeline?.length)return {skipped:true,reason:'이미 타임라인이나 초안이 있어 건너뛰었어요.'};
+  const caption=await youtube.downloadCaptions(video.id);
+  return analyzeTimeline({id:video.id,captions:caption.text,source:'youtube'});
+ },()=>timelineAI.busy);
  const books=new TextbookLibrary(store,options.bookFiles||(cfg.driver==='supabase'?new SupabaseBookFiles(cfg.supabaseUrl,cfg.supabaseKey,options.storageFetch):new LocalBookFiles(resolve(dirname(cfg.dbPath||resolve('.private/pulilog.sqlite3')),'textbooks'))));
  const oauthCookie=(value,expire=false)=>`pl_youtube_state=${value}; Path=/api/youtube/callback; HttpOnly; SameSite=Lax; Max-Age=${expire?0:600}${cfg.production?'; Secure':''}`;
  const send=(res,status,data,cookie)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8',...(cookie?{'Set-Cookie':cookie}:{})});res.end(JSON.stringify(data))};
@@ -43,7 +62,7 @@ export function createApp(cfg,store,options={}){
   const publishedTime=v=>{const time=Date.parse(dates[v.id]);return Number.isFinite(time)?time:0};
   return videos.filter(v=>v.published&&ids.has(v.id)).sort((a,b)=>publishedTime(b)-publishedTime(a)||b.added_at-a.added_at||a.id.localeCompare(b.id)).map(v=>({...v,youtube_published_at:Number.isFinite(Date.parse(dates[v.id]))?dates[v.id]:null}));
  }
- return http.createServer(async(req,res)=>{
+ const app=http.createServer(async(req,res)=>{
   res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('X-Frame-Options','DENY');res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=()');
   res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://i.ytimg.com; frame-src https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
   if(cfg.production)res.setHeader('Strict-Transport-Security','max-age=31536000');
@@ -75,6 +94,7 @@ export function createApp(cfg,store,options={}){
     }
     res.writeHead(200,{...headers,'Content-Length':bytes.length});return res.end(bytes);
    }
+   if(req.method==='GET'&&path==='/api/teacher/timeline/jobs'){await requireRole(req,'teacher');const jobs=await timelineQueue.list();timelineQueue.kick();return send(res,200,{jobs})}
    if(req.method==='GET'&&path==='/api/teacher/textbooks'){await requireRole(req,'teacher');return send(res,200,{books:await books.list({deleted:url.searchParams.get('deleted')==='1'})})}
    if(req.method==='GET'&&path==='/api/teacher/state'){
     await requireRole(req,'teacher');const [students,videos,relations,class_info,settings]=await Promise.all(['students','videos','video_classes','classes','settings'].map(t=>store.all(t)));
@@ -169,16 +189,16 @@ export function createApp(cfg,store,options={}){
     const caption=await youtube.downloadCaptions(id),cues=parseCaptions(caption.text);
     return send(res,200,{...caption,cue_count:cues.length});
    }
+   if(path==='/api/teacher/timeline/batch'){
+    check(timelineAI.status().configured,'Claude API 키를 먼저 설정해주세요.');
+    check((await youtube.status()).captions_enabled,'유튜브 자막 권한을 먼저 연결해주세요.');
+    check(Array.isArray(d.ids)&&d.ids.length>0&&d.ids.length<=20&&d.ids.every(id=>typeof id==='string'&&/^[A-Za-z0-9_-]{11}$/.test(id)),'한 번에 1~20개 영상을 선택해주세요.');
+    const videos=await store.all('videos'),selected=[...new Set(d.ids)].map(id=>videos.find(v=>v.id===id));check(selected.every(Boolean),'목록에 없는 영상이 있어요. 새로고침 후 다시 선택해주세요.');
+    return send(res,202,{jobs:await timelineQueue.enqueue(selected)});
+   }
+   if(path==='/api/teacher/timeline/jobs/cancel'){await timelineQueue.cancel(d.id);return send(res,200,{ok:true})}
    if(path==='/api/teacher/timeline/analyze'){
-    const id=clean(d.id,11),video=(await store.all('videos',{id}))[0];check(video,'영상을 찾을 수 없어요.',404);
-    check(!video.timeline_draft?.length||d.replace_draft===true,'기존 초안 교체에 동의한 뒤 다시 실행해주세요.');
-    const fingerprint=timelineFingerprint(video),result=await timelineAI.analyze(d.captions,video);
-    const latest=(await store.all('videos',{id}))[0];check(latest,'분석 중 영상이 삭제됐어요. 결과를 저장하지 않았어요.',404);
-    check(timelineFingerprint(latest)===fingerprint,'분석 중 타임라인이 변경되어 결과를 덮어쓰지 않았어요.',412);
-    const analysis={created_at:new Date().toISOString(),model:result.model,source:d.source==='youtube'?'youtube':'file',evidence:result.evidence,needs_check:result.needs_check,cue_count:result.cue_count,skipped_count:result.skipped_count||0,aligned_count:result.aligned_count||0,usage:result.usage};
-    await store.patch('videos',{id},{timeline_draft:result.rows,reviewed:false});
-    await store.put('settings',{key:'youtube_timeline_analysis_'+id,value:analysis});
-    return send(res,200,{rows:result.rows,analysis});
+    return send(res,200,await analyzeTimeline(d));
    }
    if(path==='/api/teacher/youtube/video-status'){
     check(Array.isArray(d.ids)&&d.ids.length>0&&d.ids.length<=50&&d.ids.every(id=>typeof id==='string'&&/^[A-Za-z0-9_-]{11}$/.test(id)));
@@ -211,6 +231,9 @@ export function createApp(cfg,store,options={}){
    return send(res,404,{error:'없는 기능이에요.'});
   }catch(e){const status=e instanceof StoreError?e.status:e.status||500;send(res,status,{error:status===409?'이미 등록된 전화번호예요.':status>=500?'서버 연결을 확인해주세요.':e.message})}
  });
+ app.on('listening',()=>timelineQueue.kick());
+ app.on('close',()=>timelineQueue.close());
+ return app;
 }
 
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
