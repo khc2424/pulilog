@@ -39,3 +39,8 @@ test('학생 기록은 학생·반 관리 바로 아래에 배치되고 실제 �
  const context={paths:Object.fromEntries(['overview','courses','students','records','analysis','curriculum','settings'].map(k=>[k,[k,'']])),teacherIcons:{plan:''},page:'records',teacherNavigation:()=>{},queueMicrotask:()=>{},syncSidebarState:()=>{},teacherOverview:()=> 'overview',teacherCourses:()=>'',teacherGroups:()=>'',studentRecordsView:()=> 'student-records',teacherAnalysis:()=>'',teacherCurriculum:()=>'',teacherSettings:()=>''};
  runInNewContext(source.slice(0,source.indexOf('function teacherCurriculum(){')),context);const keys=Object.keys(context.paths);assert.equal(keys.indexOf('records'),keys.indexOf('students')+1);assert.equal(context.renderTeacherPage(),'student-records');
 });
+
+test('Supabase 이름 공간 조회는 밑줄 와일드카드가 다른 학생 번호와 일치해도 정확한 학생 접두사만 반환한다',async()=>{
+ const {SupabaseStore}=await import('../src/store.mjs');const prefix='youtube_student_activity_2026-10-27_1_',rows=[{key:prefix+'aaa',value:{student_id:1}},{key:'youtube_student_activity_2026-10-27_12_bbb',value:{student_id:12}}];
+ const store=new SupabaseStore('https://example.supabase.co','private',async()=>Response.json(rows));assert.deepEqual((await store.settingsPrefix(prefix)).map(r=>r.value.student_id),[1]);
+});
