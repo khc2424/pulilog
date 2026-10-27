@@ -83,6 +83,7 @@ function bindTeacherVideoRowSelection(row){
 function bindTeacherPage(){
  if(studentMode||!teacherAuthorized)return;
  bindCurriculum();
+ bindTextbooks();
  document.querySelectorAll('[data-video-row]').forEach(bindTeacherVideoRowSelection);
  const selectionInputs=[...document.querySelectorAll('[data-select-video]')];
  const selectAll=$('#select-visible-videos');if(selectAll){selectAll.indeterminate=selectionInputs.some(input=>input.checked)&&!selectionInputs.every(input=>input.checked);selectAll.onchange=e=>{for(const input of selectionInputs)if(e.target.checked)selectedTeacherVideoIds.add(input.value);else selectedTeacherVideoIds.delete(input.value);render();$('#select-visible-videos')?.focus()}}

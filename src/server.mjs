@@ -1,6 +1,7 @@
 import http from 'node:http';
 import { createHash,createHmac,randomBytes,timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { TextbookLibrary,LocalBookFiles,SupabaseBookFiles,MAX_PDF_BYTES } from './textbooks.mjs';
 import { resolve,dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from './config.mjs';
@@ -14,7 +15,7 @@ import { TimelineAI,timelineFingerprint,parseCaptions } from './timeline-ai.mjs'
 import { YouTubeAutoImport } from './youtube-auto.mjs';
 
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'../public');
-const assets=new Map([['/','index.html'],...['index.html','search.js','app.js','accounts.js','teacher.js','workbench.js','production.js','timeline-ai.js','curriculum.js','style.css'].map(f=>['/'+f,f])]);
+const assets=new Map([['/','index.html'],...['index.html','search.js','app.js','accounts.js','teacher.js','workbench.js','production.js','timeline-ai.js','curriculum.js','textbooks.js','style.css'].map(f=>['/'+f,f])]);
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const clean=(v,max=300)=>String(v??'').trim().slice(0,max);
 const check=(ok,message='입력 내용을 확인해주세요.',status=400)=>{if(!ok){const e=new Error(message);e.status=status;throw e}};
@@ -28,6 +29,7 @@ export function createApp(cfg,store,options={}){
  const youtube=new YouTubeConnection(cfg,store,options.youtubeFetch);
  const youtubeAuto=new YouTubeAutoImport(cfg,store,youtube);
  const timelineAI=new TimelineAI(cfg,options.aiFetch);
+ const books=new TextbookLibrary(store,options.bookFiles||(cfg.driver==='supabase'?new SupabaseBookFiles(cfg.supabaseUrl,cfg.supabaseKey,options.storageFetch):new LocalBookFiles(resolve(dirname(cfg.dbPath||resolve('.private/pulilog.sqlite3')),'textbooks'))));
  const oauthCookie=(value,expire=false)=>`pl_youtube_state=${value}; Path=/api/youtube/callback; HttpOnly; SameSite=Lax; Max-Age=${expire?0:600}${cfg.production?'; Secure':''}`;
  const send=(res,status,data,cookie)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8',...(cookie?{'Set-Cookie':cookie}:{})});res.end(JSON.stringify(data))};
  const cookie=(role,token,remember=false,expire=false)=>`${role==='teacher'?'axis_admin':'axis_student'}=${token}; Path=/; HttpOnly; SameSite=Strict${cfg.production?'; Secure':''}${expire?'; Max-Age=0':remember?'; Max-Age=2592000':''}`;
@@ -60,18 +62,38 @@ export function createApp(cfg,store,options={}){
    if(req.method==='GET'&&path==='/api/status')return send(res,200,{name:'풀이로그',database:cfg.driver,environment:cfg.production?'production':'development',youtube_connected:(await youtube.status()).connected,video_analysis_connected:false,timeline_analysis_configured:timelineAI.status().configured,demo_data:false});
    if(req.method==='GET'&&path==='/api/session'){const s=await session(req,'student');return send(res,200,{student:s?{id:s.id,name:s.name,class_name:s.class_name}:null,teacher:!!await session(req,'teacher')})}
    if(req.method==='GET'&&path==='/api/videos'){const s=await requireRole(req);const fav=new Set((await store.all('favorites',{student_id:s.id})).map(f=>f.video_id));return send(res,200,{videos:(await allowedVideos(s)).map(v=>publicVideo(v,fav.has(v.id)))})}
+   const pdfRoute=path.match(/^\/api\/teacher\/textbooks\/([0-9a-f-]+)\/file$/);
+   if(req.method==='GET'&&pdfRoute){
+    await requireRole(req,'teacher');const {book,bytes}=await books.download(pdfRoute[1]);
+    const headers={'Content-Type':'application/pdf','Content-Disposition':(url.searchParams.get('download')==='1'?'attachment':'inline')+'; filename="textbook.pdf"; filename*=UTF-8\'\''+encodeURIComponent(book.filename),'Accept-Ranges':'bytes','Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'"};
+    if(req.headers.range){
+     const match=req.headers.range.match(/^bytes=(\d*)-(\d*)$/);let start=0,end=bytes.length-1;
+     if(!match||!match[1]&&!match[2]){res.writeHead(416,{'Content-Range':'bytes */'+bytes.length});return res.end()}
+     if(match[1]){start=Number(match[1]);if(match[2])end=Math.min(Number(match[2]),end)}else start=Math.max(0,bytes.length-Number(match[2]));
+     if(start>=bytes.length||end<start){res.writeHead(416,{'Content-Range':'bytes */'+bytes.length});return res.end()}
+     res.writeHead(206,{...headers,'Content-Length':end-start+1,'Content-Range':`bytes ${start}-${end}/${bytes.length}`});return res.end(bytes.subarray(start,end+1));
+    }
+    res.writeHead(200,{...headers,'Content-Length':bytes.length});return res.end(bytes);
+   }
+   if(req.method==='GET'&&path==='/api/teacher/textbooks'){await requireRole(req,'teacher');return send(res,200,{books:await books.list({deleted:url.searchParams.get('deleted')==='1'})})}
    if(req.method==='GET'&&path==='/api/teacher/state'){
     await requireRole(req,'teacher');const [students,videos,relations,class_info,settings]=await Promise.all(['students','videos','video_classes','classes','settings'].map(t=>store.all(t)));
     const videoDates=settings.find(row=>row.key==='youtube_video_dates')?.value||{};
     const curricula=settings.filter(row=>row.key.startsWith('youtube_curriculum_')).map(row=>({...row.value,calculated:buildCurriculum(row.value,daysForSchedule(class_info.find(c=>c.name===row.value.class_name)?.schedule))}));
     const teachingStyles=summarizeTeachingStyles(settings.find(row=>row.key==='youtube_teaching_style_observations')?.value||[]);
-    return send(res,200,{curricula,teaching_styles:teachingStyles,students:students.sort((a,b)=>a.id-b.id),classes:class_info.map(c=>c.name).sort(),class_info,settings:publicSettings(settings),youtube:{...await youtube.status(),auto_import:await youtubeAuto.status()},ai:timelineAI.status(),videos:videos.sort((a,b)=>b.added_at-a.added_at).map(v=>({...v,ai_analysis:settings.find(row=>row.key==='youtube_timeline_analysis_'+v.id)?.value||null,youtube_year:youtubeYear(videoDates[v.id]),youtube_published_at:Number.isFinite(Date.parse(videoDates[v.id]))?videoDates[v.id]:null,is_new:Date.now()/1000-v.added_at<604800,classes:relations.filter(r=>r.video_id===v.id).map(r=>r.class_name),has_draft:v.timeline_draft!==null,timeline_draft:v.timeline_draft??v.timeline}))});
+    return send(res,200,{textbooks:await books.list(),curricula,teaching_styles:teachingStyles,students:students.sort((a,b)=>a.id-b.id),classes:class_info.map(c=>c.name).sort(),class_info,settings:publicSettings(settings),youtube:{...await youtube.status(),auto_import:await youtubeAuto.status()},ai:timelineAI.status(),videos:videos.sort((a,b)=>b.added_at-a.added_at).map(v=>({...v,ai_analysis:settings.find(row=>row.key==='youtube_timeline_analysis_'+v.id)?.value||null,youtube_year:youtubeYear(videoDates[v.id]),youtube_published_at:Number.isFinite(Date.parse(videoDates[v.id]))?videoDates[v.id]:null,is_new:Date.now()/1000-v.added_at<604800,classes:relations.filter(r=>r.video_id===v.id).map(r=>r.class_name),has_draft:v.timeline_draft!==null,timeline_draft:v.timeline_draft??v.timeline}))});
    }
    if(req.method==='GET'&&assets.has(path)){const file=assets.get(path);const contents=await readFile(resolve(ROOT,file));res.writeHead(200,{'Content-Type':file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8'});return res.end(contents)}
    if(req.method!=='POST')return send(res,404,{error:'없는 페이지예요.'});
    check(req.headers['x-axis-request']==='1','앱에서 다시 시도해주세요.',403);
    check(!req.headers.origin||req.headers.origin===cfg.origin,'허용되지 않은 요청이에요.',403);
    check(req.headers.host===new URL(cfg.origin).host,'허용되지 않은 주소예요.',403);
+   if(path==='/api/teacher/textbooks/upload'){
+    await requireRole(req,'teacher');check(!books.uploading,'다른 PDF를 저장 중이에요. 잠시 후 다시 시도해주세요.',429);
+    check(req.headers['content-type']?.split(';')[0]==='application/pdf','PDF 파일을 선택해주세요.');
+    check(!req.headers['content-length']||Number(req.headers['content-length'])<=MAX_PDF_BYTES,'PDF는 50MB 이하로 선택해주세요.',413);
+    books.uploading=true;try{let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;check(size<=MAX_PDF_BYTES,'PDF는 50MB 이하로 선택해주세요.',413);chunks.push(chunk)}return send(res,200,{book:await books.upload(Object.fromEntries(url.searchParams),Buffer.concat(chunks))})}finally{books.uploading=false}
+   }
    const d=await body(req,path==='/api/teacher/timeline/analyze'?500000:100000);
    if(path==='/api/login'||path==='/api/teacher/login'){
     await rate(req,path);
@@ -81,6 +103,10 @@ export function createApp(cfg,store,options={}){
    if(path==='/api/logout'||path==='/api/teacher/logout'){const role=path.includes('/teacher/')?'teacher':'student';const token=cookieToken(req,role);if(token)await store.del('sessions',{digest:hash(token)});return send(res,200,{ok:true},cookie(role,'',false,true))}
    if(path==='/api/favorite'){const s=await requireRole(req);check((await allowedVideos(s)).some(v=>v.id===d.video_id),'이 반에서 볼 수 없는 영상이에요.',404);const value={student_id:s.id,video_id:d.video_id};if(d.favorite===true)await store.put('favorites',value);else await store.del('favorites',value);return send(res,200,{favorite:d.favorite===true})}
    const teacherSession=await requireRole(req,'teacher');
+   if(path==='/api/teacher/textbooks/setup'){await books.files.ensure();return send(res,200,{ok:true,...(d.verify===true?await books.verifyStorage():{})})}
+   if(path==='/api/teacher/textbooks/update')return send(res,200,{book:await books.update(d.id,d)});
+   if(path==='/api/teacher/textbooks/delete')return send(res,200,{book:await books.archive(d.id)});
+   if(path==='/api/teacher/textbooks/restore')return send(res,200,{book:await books.archive(d.id,true)});
    if(path==='/api/teacher/videos/recover-deletion-history'){
     const extra=d.ids??[];check(Array.isArray(extra)&&extra.length<=5000&&extra.every(id=>typeof id==='string'&&/^[A-Za-z0-9_-]{11}$/.test(id)));
     const dates=(await store.all('settings',{key:'youtube_video_dates'}))[0]?.value||{};
