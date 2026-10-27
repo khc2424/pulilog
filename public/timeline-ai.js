@@ -18,7 +18,7 @@ function openTimelineAI(id){
   if(!captions)return;
   if(needsReplace&&!$('#ai-replace-draft').checked){$('#ai-error').textContent='현재 초안을 교체할지 확인해주세요.';return}
   const button=e.currentTarget;button.disabled=true;$('#ai-caption-file').disabled=true;$('#ai-fetch-captions').disabled=true;$('#ai-error').textContent='';$('#ai-source-status').textContent='문제별 시작 구간을 분석하고 있어요. 긴 자막은 자동으로 나눠 분석하므로 몇 분 걸릴 수 있어요.';
-  try{const result=await requestAPI('/api/teacher/timeline/analyze',{id,captions,source,replace_draft:needsReplace});await refreshTeacher();timelineDrafts[id]=result.rows;selectedCourseId=id;courseTab='timeline';closeModal();go('courses');render();toast(`초안 ${result.rows.length}개를 저장했어요. 확인 필요 ${result.analysis.needs_check}개${result.analysis.skipped_count?' · 근거 미확인 '+result.analysis.skipped_count+'개 제외':''} · 학생에게는 아직 공개되지 않았어요.`)}catch(error){if($('#ai-error')){$('#ai-error').textContent=error.message;button.disabled=false;$('#ai-caption-file').disabled=false;$('#ai-fetch-captions').disabled=!managedData.youtube?.captions_enabled}}
+  try{const result=await requestAPI('/api/teacher/timeline/analyze',{id,captions,source,replace_draft:needsReplace});await refreshTeacher();timelineDrafts[id]=result.rows;timelineDirtyIds.delete(id);selectedCourseId=id;courseTab='timeline';closeModal();go('courses');render();toast(`초안 ${result.rows.length}개를 저장했어요. 확인 필요 ${result.analysis.needs_check}개${result.analysis.skipped_count?' · 근거 미확인 '+result.analysis.skipped_count+'개 제외':''} · 학생에게는 아직 공개되지 않았어요.`)}catch(error){if($('#ai-error')){$('#ai-error').textContent=error.message;button.disabled=false;$('#ai-caption-file').disabled=false;$('#ai-fetch-captions').disabled=!managedData.youtube?.captions_enabled}}
  };
 }
 

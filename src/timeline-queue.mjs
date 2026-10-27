@@ -10,7 +10,12 @@ export class TimelineQueue {
   if(!this.initializing)this.initializing=(async()=>{for(const job of await this.rows())if(job.status==='running')await this.save({...job,status:'failed',error:'서버 재시작으로 중단됐어요. 초안이 있는지 확인한 뒤 다시 요청해주세요.'})})().catch(error=>{this.initializing=null;throw error});
   await this.initializing;
  }
- async list(){await this.ready();const jobs=await this.rows();return [...jobs.filter(active),...jobs.filter(j=>!active(j)).slice(-40)].sort((a,b)=>b.created_at.localeCompare(a.created_at)||b.id.localeCompare(a.id))}
+ async dismissReviewed(videoId){await this.store.put('settings',{key:'youtube_timeline_reviewed_'+videoId,value:new Date().toISOString()})}
+ async list(){
+  await this.ready();const reviewed=new Map((await this.store.all('settings')).filter(r=>r.key.startsWith('youtube_timeline_reviewed_')).map(r=>[r.key.slice('youtube_timeline_reviewed_'.length),r.value]));
+  const jobs=(await this.rows()).filter(job=>!reviewed.has(job.video_id)||job.created_at>reviewed.get(job.video_id));
+  return [...jobs.filter(active),...jobs.filter(j=>!active(j)).slice(-40)].sort((a,b)=>b.created_at.localeCompare(a.created_at)||b.id.localeCompare(a.id));
+ }
  enqueue(videos){
   const pending=this.adding.then(async()=>{
    await this.ready();if(!Array.isArray(videos)||!videos.length||videos.length>20)fail('한 번에 1~20개 영상을 선택해주세요.');

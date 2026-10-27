@@ -225,7 +225,7 @@ export function createApp(cfg,store,options={}){
    if(path==='/api/teacher/timeline'||path==='/api/teacher/note'){
     const old=(await store.all('videos',{id:clean(d.id,11)}))[0];check(old,'영상을 찾을 수 없어요.',404);
     let changes;if(path.endsWith('/note')){changes={notes:clean(d.notes,5000),supplement_needed:d.supplement_needed===true}}else{const rows=cleanRows(d.rows);changes=d.publish===true?{timeline:rows,timeline_draft:null,reviewed:true}:{timeline_draft:rows,reviewed:false}}
-    await store.patch('videos',{id:old.id},changes);return send(res,200,{ok:true});
+    await store.patch('videos',{id:old.id},changes);if(path==='/api/teacher/timeline'&&d.publish===true)await timelineQueue.dismissReviewed(old.id);return send(res,200,{ok:true});
    }
    if(path==='/api/teacher/settings'){const channel=clean(d.channel_url,500);check(!channel||/^https:\/\/(www\.)?youtube\.com\/(@[\w.\-]+|channel\/[\w\-]+)\/?$/.test(channel),'유튜브 채널 주소를 확인해주세요.');await store.put('settings',{key:'channel_url',value:channel});return send(res,200,{ok:true})}
    return send(res,404,{error:'없는 기능이에요.'});

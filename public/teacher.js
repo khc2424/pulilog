@@ -3,6 +3,7 @@ const teacherIcons={home:paths.overview[1],course:paths.lessons[1],people:paths.
 for(const key of Object.keys(paths))delete paths[key];
 Object.assign(paths,{overview:['오늘 할 일',teacherIcons.home],courses:['강의 관리',teacherIcons.course],students:['학생·반 관리',teacherIcons.people],analysis:['수업 분석',teacherIcons.book],curriculum:['커리큘럼',teacherIcons.plan],settings:['연동 설정','<circle cx="12" cy="12" r="8"/><path d="M8 12h8M12 8v8"/>']});
 let teacherCourseYear=null;
+const timelineDirtyIds=new Set();
 const teacherCourseClasses=new Set(),teacherCourseMissing=new Set(),selectedTeacherVideoIds=new Set();
 let teacherCourseSearch='',teacherCourseFilter='all',selectedCourseId=null,courseTab='info';
 let selectedGroup='',teacherStudentSearch='',teacherPlanningTab='curriculum',timelineDrafts={};
@@ -65,15 +66,32 @@ function confirmTeacherVideosDelete(requestedIds){
   const button=e.currentTarget;button.disabled=true;$('#video-delete-cancel').disabled=true;
   try{
    await requestAPI('/api/teacher/videos/delete',{ids,execute:true});
-   managedData.videos=managedData.videos.filter(v=>!deleting.has(v.id));for(const id of ids){delete timelineDrafts[id];selectedTeacherVideoIds.delete(id)}if(deleting.has(selectedCourseId))selectedCourseId=null;
+   managedData.videos=managedData.videos.filter(v=>!deleting.has(v.id));for(const id of ids){delete timelineDrafts[id];timelineDirtyIds.delete(id);selectedTeacherVideoIds.delete(id)}if(deleting.has(selectedCourseId))selectedCourseId=null;
    let refreshed=true;try{await refreshTeacher()}catch{refreshed=false}
    closeModal();render();toast(refreshed?`${ids.length}개 영상을 삭제했어요.`:'삭제했어요. 최신 목록은 새로고침해주세요.');
   }catch(error){const message=$('#video-delete-error');if(message)message.textContent=error.message;button.disabled=false;const cancel=$('#video-delete-cancel');if(cancel)cancel.disabled=false}
  };
 }
+let teacherCourseReturn={page:'courses',scroll:0};
+function rememberTeacherCourseReturn(){if(!selectedCourseId)teacherCourseReturn={page,scroll:window.scrollY||0}}
+function returnFromTeacherCourse(){
+ const back=teacherCourseReturn;selectedCourseId=null;
+ const restore=()=>window.scrollTo(0,back.scroll);
+ if(location.hash==='#'+back.page){page=back.page;render();restore()}
+ else{window.addEventListener('hashchange',restore,{once:true});go(back.page)}
+}
+async function saveTeacherTimeline(mode){
+ try{
+  const id=selectedCourseId,rows=readTimelineRows();
+  await requestAPI('/api/teacher/timeline',{id,rows,publish:mode==='publish'});
+  delete timelineDrafts[id];timelineDirtyIds.delete(id);await refreshTeacher();
+  if(mode==='publish'){timelineBatchJobs=timelineBatchJobs.filter(job=>job.video_id!==id);returnFromTeacherCourse()}else render();
+  toast(mode==='publish'?'검토한 타임라인을 학생에게 반영했어요.':'임시 저장했어요. 학생에게는 기존 타임라인이 보여요.');
+ }catch(error){const status=$('#timeline-save-status');if(status)status.textContent=error.message;toast(error.message)}
+}
 function timeToSeconds(value){const parts=value.trim().split(':');if(!/^(\d{1,2}:)?\d{1,3}:\d{2}$/.test(value.trim())||parts.length>3||parts.slice(1).some(p=>Number(p)>59))throw new Error('시작 시간을 01:48 또는 1:00:19 형식으로 입력해주세요.');return parts.reduce((a,p)=>a*60+Number(p),0)}
 function readTimelineRows(){return [...document.querySelectorAll('.timeline-edit-row')].map(row=>{const label=row.querySelector('[data-tl-time]').value.trim(),topic=row.querySelector('[data-tl-topic]').value.trim();if(!topic)throw new Error('설명 제목을 입력해주세요.');return['',0,topic,label,timeToSeconds(label)]})}
-document.addEventListener('input',e=>{if(e.target.closest('.timeline-edit-row')&&selectedCourseId){try{timelineDrafts[selectedCourseId]=readTimelineRows();$('#timeline-save-status').textContent='변경사항이 있어요. 임시 저장하거나 학생에게 반영해주세요.'}catch{}}});
+document.addEventListener('input',e=>{if(e.target.closest('.timeline-edit-row')&&selectedCourseId){timelineDirtyIds.add(selectedCourseId);try{timelineDrafts[selectedCourseId]=readTimelineRows();$('#timeline-save-status').textContent='변경사항이 있어요. 임시 저장하거나 학생에게 반영해주세요.'}catch{}}});
 function bindTeacherVideoRowSelection(row){
  row.onclick=e=>{
   if(e.target.closest('button,a,input,label,select,textarea,[role="button"]')||window.getSelection()?.toString())return;
@@ -111,14 +129,14 @@ document.addEventListener('click',async e=>{
  if(el.dataset.tEdit)editTeacherCourse(el.dataset.tEdit);
  if(el.dataset.tAi)openTimelineAI(el.dataset.tAi);
  if(el.dataset.tDelete)confirmTeacherVideoDelete(el.dataset.tDelete);
- if(el.hasAttribute('data-t-back')){selectedCourseId=null;render()}
- if(el.dataset.tOpen){selectedCourseId=el.dataset.tOpen;courseTab=el.dataset.tab||'info';go('courses')}
+ if(el.hasAttribute('data-t-back'))returnFromTeacherCourse()
+ if(el.dataset.tOpen){rememberTeacherCourseReturn();selectedCourseId=el.dataset.tOpen;courseTab=el.dataset.tab||'info';go('courses')}
  if(el.dataset.tCourseTab){courseTab=el.dataset.tCourseTab;render()}
  if(el.dataset.tFilter){teacherCourseFilter=el.dataset.tFilter;selectedCourseId=null;go('courses')}
  if(el.hasAttribute('data-t-group')){selectedGroup=el.dataset.tGroup;render()}
  if(el.dataset.tPlanning){teacherPlanningTab=el.dataset.tPlanning;render()}
  if(el.dataset.tVisibility){const v=teacherVideo(el.dataset.tVisibility);try{await requestAPI('/api/teacher/video',{...v,classes:videoGroups(v),published:!v.published});await refreshTeacher();render();toast(v.published?'학생 목록에서 숨겼어요.':'학생 목록에 표시했어요.')}catch(error){toast(error.message)}}
- if(el.hasAttribute('data-t-row-add')||el.dataset.tRowRemove!==undefined){try{const rows=readTimelineRows();if(el.hasAttribute('data-t-row-add')){rows.push(['',0,'추가 설명','00:00',0])}else rows.splice(Number(el.dataset.tRowRemove),1);timelineDrafts[selectedCourseId]=rows;render()}catch(error){toast(error.message)}}
+ if(el.hasAttribute('data-t-row-add')||el.dataset.tRowRemove!==undefined){try{const rows=readTimelineRows();if(el.hasAttribute('data-t-row-add')){rows.push(['',0,'추가 설명','00:00',0])}else rows.splice(Number(el.dataset.tRowRemove),1);timelineDrafts[selectedCourseId]=rows;timelineDirtyIds.add(selectedCourseId);render()}catch(error){toast(error.message)}}
  if(el.dataset.tRowPreview!==undefined){try{const rows=readTimelineRows();timelineDrafts[selectedCourseId]=rows;const row=rows[Number(el.dataset.tRowPreview)];$('#teacher-preview-player').src=`https://www.youtube.com/embed/${selectedCourseId}?start=${row[4]}&autoplay=1`}catch(error){toast(error.message)}}
- if(el.dataset.tTimelineSave){try{const rows=readTimelineRows();await requestAPI('/api/teacher/timeline',{id:selectedCourseId,rows,publish:el.dataset.tTimelineSave==='publish'});delete timelineDrafts[selectedCourseId];await refreshTeacher();render();toast(el.dataset.tTimelineSave==='publish'?'검토한 타임라인을 학생에게 반영했어요.':'임시 저장했어요. 학생에게는 기존 타임라인이 보여요.')}catch(error){const status=$('#timeline-save-status');if(status)status.textContent=error.message;toast(error.message)}}
+ if(el.dataset.tTimelineSave)await saveTeacherTimeline(el.dataset.tTimelineSave);
 });

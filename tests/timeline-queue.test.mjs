@@ -50,3 +50,13 @@ test('일괄 작업 API는 선생님 전용이고 응답은 빠르게 접수하�
   const list=await (await fetch(cfg.origin+'/api/videos',{headers:{Cookie:student}})).json();assert.ok(!JSON.stringify(list).includes('job'));assert.ok(list.videos.every(v=>!v.timeline.length));
  }finally{await new Promise(r=>app.close(r));store.close()}
 });
+
+test('검토 완료한 영상의 작업은 목록에서 사라지고 새로 접수한 작업은 다시 표시한다',async()=>{
+ const store=new LocalStore(':memory:'),queue=new TimelineQueue(store,async()=>({rows:[],analysis:{}}));
+ try{
+  await store.put('settings',{key:'youtube_timeline_job_old',value:{id:'old',video_id:'video',title:'강의',status:'done',created_at:'2026-01-01T00:00:00Z'}});
+  assert.equal((await queue.list()).length,1);await queue.dismissReviewed('video');assert.equal((await queue.list()).length,0);
+  await store.put('settings',{key:'youtube_timeline_job_new',value:{id:'new',video_id:'video',title:'강의',status:'queued',created_at:'2099-01-01T00:00:00Z'}});
+  assert.equal((await queue.list()).length,1);assert.equal((await queue.list())[0].id,'new');
+ }finally{queue.close();store.close()}
+});

@@ -120,3 +120,34 @@ body.sidebar-collapsed .topbar{padding-left:72px}
 .batch-confirm-list{max-height:240px;overflow:auto;padding-left:22px;font-size:13px;line-height:1.8}.timeline-batch-card summary{cursor:pointer;padding:12px 0}.timeline-batch-job{gap:18px}.timeline-batch-job>div:first-child{min-width:0;overflow-wrap:anywhere}.timeline-batch-job .heading-actions{flex-shrink:0}@media(max-width:650px){.timeline-batch-job{align-items:flex-start;flex-direction:column}}
 
 .timeline-edit-row{grid-template-columns:90px minmax(0,1fr) 43px}.timeline-edit-row .timeline-topic-field{grid-column:auto}.timeline-row,.timeline-row.timeline-marked{grid-template-columns:minmax(0,1fr) auto}.timeline-marked .timeline-topic{color:#6B554D}@media(max-width:650px){.timeline-edit-row{grid-template-columns:76px minmax(0,1fr) 36px}.timeline-edit-row .timeline-topic-field{grid-column:auto}}
+/* The video remains in place; only the lesson timeline list scrolls. */
+.modal.lesson-modal{width:min(1120px,calc(100vw - 24px));height:min(780px,calc(100dvh - 24px));max-height:calc(100dvh - 24px);padding:24px;overflow:hidden;display:flex;flex-direction:column}
+.lesson-modal #modal-content{flex:1;min-height:0;display:flex;flex-direction:column}
+.lesson-modal .modal-close{z-index:3;background:white;border-radius:8px}
+.lesson-modal-layout{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);gap:16px;flex:1;min-height:0}
+.lesson-main{min-width:0;min-height:0;display:flex;flex-direction:column}
+.lesson-modal .lesson-header h2{font-size:17px;line-height:1.5;padding-right:26px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin:0 0 6px}
+.lesson-modal .lesson-header .subtitle{margin:0 0 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px}
+.lesson-video-stage{min-height:0}
+.lesson-modal .embedded-video{display:block;width:100%;height:auto;aspect-ratio:16/9;max-height:calc(100dvh - 210px)}
+.lesson-modal .playing-position{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lesson-original{margin-top:6px;flex-shrink:0}.lesson-original .btn{padding:7px 10px;font-size:10px}
+.lesson-modal .lesson-timeline{display:flex;flex-direction:column;min-height:0;margin:0;padding-top:12px;overflow:hidden}
+.lesson-modal .timeline-heading{flex-shrink:0;flex-direction:row;align-items:center}
+.lesson-modal .timeline-help{flex-shrink:0;font-size:10px;margin:7px 0 8px}
+.lesson-timeline-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;touch-action:pan-y;-webkit-overflow-scrolling:touch;padding-right:4px}
+.lesson-timeline-scroll:focus-visible{outline:2px solid #AFC7C1;outline-offset:-2px;border-radius:8px}
+@media(min-width:760px),(orientation:landscape) and (min-width:480px){
+ .lesson-modal-layout{grid-template-columns:minmax(0,1.4fr) minmax(260px,1fr);grid-template-rows:minmax(0,1fr);gap:24px}
+ .lesson-modal .lesson-timeline{border-top:0;border-left:1px solid var(--line);padding:0 0 0 20px}
+}
+@media(max-width:650px){.modal.lesson-modal{padding:18px 12px 12px;border-radius:14px}.lesson-modal-layout{gap:10px}.lesson-modal .lesson-header h2{font-size:14px}.lesson-modal .lesson-header .subtitle{font-size:10px;margin-bottom:8px}.lesson-modal .timeline-row{min-height:56px}}
+@media(orientation:landscape) and (max-height:500px){
+ .modal.lesson-modal{padding:14px 12px 10px}.lesson-modal-layout{grid-template-columns:minmax(0,1.3fr) minmax(220px,1fr);gap:14px}
+ .lesson-modal .lesson-timeline{padding-left:12px}.lesson-modal .lesson-header h2{font-size:13px}.lesson-modal .lesson-header .subtitle{font-size:9px;margin-bottom:6px}
+ .lesson-modal .timeline-help{font-size:9px;line-height:1.5}.lesson-modal .timeline-heading h3{font-size:12px}.lesson-modal .timeline-row{padding:9px 5px;min-height:48px}
+}
+
+.batch-title-link{font-size:12px;line-height:1.8}.batch-title-link:hover{text-decoration:underline}
+
+.lesson-modal .timeline-heading{padding-right:30px}
