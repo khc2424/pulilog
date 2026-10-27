@@ -65,6 +65,9 @@ test('학생·반·영상·타임라인·권한 통합 흐름',async t=>{
   assert.deepEqual((await call('/api/videos',undefined,a)).body.videos[0].timeline,[]);
   assert.equal((await call('/api/teacher/timeline',{id:video.id,rows,publish:true},teacher)).status,200);
   assert.equal((await call('/api/videos',undefined,a)).body.videos[0].timeline[0][3],'01:48');
+  const titleOnly=[['',0,'도형의 넓이와 최솟값','ignored',108]];
+  assert.equal((await call('/api/teacher/timeline',{id:video.id,rows:titleOnly,publish:true},teacher)).status,200);
+  assert.equal((await call('/api/videos',undefined,a)).body.videos[0].timeline[0][2],'도형의 넓이와 최솟값');
   await call('/api/teacher/note',{id:video.id,notes:'교사 전용',supplement_needed:true},teacher);
   const v=(await call('/api/videos',undefined,a)).body.videos[0];for(const k of ['notes','timeline_draft','supplement_needed','classes'])assert.equal(k in v,false);
  });

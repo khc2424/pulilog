@@ -14,7 +14,7 @@ test('SRT/VTT 시간을 유지하고 근거 없는 시간·본문·문제 번호
  const srt=parseCaptions('1\n01:02:03,400 --> 01:02:05,000\n<b>123번</b> 풀이\n');assert.equal(srt[0].start,3723);assert.equal(srt[0].text,'123번 풀이');
  assert.throws(()=>parseCaptions('문제 1번: 35초'));assert.throws(()=>parseCaptions(subtitles.replace('00:00:35','00:61:35')));
  assert.throws(()=>parseCaptions('a'.repeat(2*1024*1024+1)));
- const result=validateAnalysis(answer,cues);assert.equal(result.rows[0][4],1);assert.equal(result.rows[1][0],'번호 확인 필요');assert.equal(result.needs_check,1);
+ const result=validateAnalysis(answer,cues);assert.equal(result.rows[0][4],1);assert.equal(result.rows[1][0],'번호 확인 필요');assert.equal(result.needs_check,1);assert.equal(result.rows[0][2],'1번 · 거리의 최솟값');assert.equal(result.rows[1][2],'다음 문제 풀이');
  for(const changed of [{cue_id:999},{evidence:'원문에 없는 말'},{number:'1000000'},{title:''}])assert.throws(()=>validateAnalysis({items:[{...answer.items[0],...changed}]},cues));
 });
 
@@ -46,7 +46,7 @@ test('AI 결과는 초안에만 저장하고 학생에게 비공개, 동시 수�
   const list=await (await fetch(cfg.origin+'/api/videos',{headers:{Cookie:student}})).json();assert.deepEqual(list.videos[0].timeline,video.timeline);assert.ok(!JSON.stringify(list).includes('evidence'));
   const state=await (await fetch(cfg.origin+'/api/teacher/state',{headers:{Cookie:teacher}})).json();assert.ok(state.videos[0].ai_analysis);assert.ok(!JSON.stringify(state).includes('private-key'));assert.deepEqual(state.settings,{});
   assert.equal((await post('/api/teacher/timeline/analyze',data,teacher)).status,400);assert.equal(aiCalls,1);
-  assert.equal((await post('/api/teacher/timeline',{id:video.id,rows:result.data.rows,publish:true},teacher)).status,400);
+  assert.equal((await post('/api/teacher/timeline',{id:video.id,rows:result.data.rows,publish:true},teacher)).status,200);
   changeDuringAnalysis=true;
   assert.equal((await post('/api/teacher/timeline/analyze',{...data,replace_draft:true},teacher)).status,412);
   assert.equal((await store.all('videos',{id:video.id}))[0].timeline_draft[0][0],'9');
@@ -103,7 +103,7 @@ test('잡담과 캡쳐구간은 문제 번호와 분리하고 영상 전체에�
  const item=(i,kind,number=null)=>({cue_id:i,kind,number,title:'구간 설명',evidence:cues[i].text,confidence:'high'});
  const items=[item(0,'problem','1'),item(1,'smalltalk'),item(2,'capture'),item(3,'smalltalk'),item(4,'capture'),item(5,'problem')];
  const result=validateAnalysis({items},cues);
- assert.deepEqual(result.rows.map(r=>r[0]),['1','잡담1','캡쳐구간1','잡담2','캡쳐구간2','번호 확인 필요']);assert.equal(result.needs_check,1);
+ assert.deepEqual(result.rows.map(r=>r[0]),['1','잡담1','캡쳐구간1','잡담2','캡쳐구간2','번호 확인 필요']);assert.equal(result.needs_check,0);
  assert.throws(()=>validateAnalysis({items:[{...item(1,'smalltalk'),number:'2'}]},cues));
  assert.throws(()=>validateAnalysis({items:[item(1,'capture')]},cues));
  assert.throws(()=>validateAnalysis({items:[item(1,'unknown')]},cues));

@@ -36,7 +36,7 @@ const instructions=`대한민국 수학 수업의 문제별 타임라인을 만�
 문제 풀이 시작은 kind=problem으로 찾아라. 수업과 관계없는 개인 이야기·농담·일상 대화가 독립적으로 이어지는 구간의 시작은 kind=smalltalk으로 표시한다. 수학 설명에 필요한 비유, 수업 안내, 인사 한마디, 잠깐의 웃음은 잡담으로 분류하지 마라. 하나의 이어지는 잡담은 시작 한 번만 표시한다.
 선생님이 실제로 "캡쳐구간", "캡처 구간", "여기 캡처해"처럼 화면 캡처를 안내한 발언은 kind=capture로 표시한다. 캡처 안내가 있다는 자막 근거가 없으면 만들지 마라. capture의 evidence에는 캡쳐·캡처·스크린샷 중 실제로 발언된 표현을 포함한다. smalltalk과 capture는 number=null이다.
  설명 중 다른 문제를 언급하거나 숫자를 계산하는 부분, 이전 문제를 다시 말하는 부분은 새 항목으로 만들지 마라.
-cue_id는 해당 문제·잡담·캡처 안내가 시작하는 실제 자막 id를 사용한다. evidence는 반드시 그 자막 text의 연속된 원문 일부여야 한다. 문장을 다듬거나 어미·숫자 표기를 고치지 말고 그대로 복사한다. 자막 한 줄이 문장 중간에 끊겨 있어도 그 줄에 있는 부분만 인용한다. 없는 번호·시간·주제를 상상하지 마라. 문제 번호를 확신할 수 없으면 number=null로 남긴다. title은 짧은 한국어 설명, confidence는 high/medium/low다. 동일 문제를 연속으로 중복하지 마라. 최대 120개만 시간순으로 반환한다.`;
+cue_id는 해당 문제·잡담·캡처 안내가 시작하는 실제 자막 id를 사용한다. evidence는 반드시 그 자막 text의 연속된 원문 일부여야 한다. 문장을 다듬거나 어미·숫자 표기를 고치지 말고 그대로 복사한다. 자막 한 줄이 문장 중간에 끊겨 있어도 그 줄에 있는 부분만 인용한다. 없는 번호·시간·주제를 상상하지 마라. 문제 번호를 확신할 수 없으면 number=null로 남긴다. 번호가 들리지 않는 것은 오류가 아니며 번호를 추측하지 마라. 가장 중요한 것은 title이다. title은 자막의 실제 수업 내용을 바탕으로 다루는 식·조건·개념·풀이 핵심이 드러나는 150자 이내의 구체적인 한국어 제목이다. "문제 풀이", "다음 문제", "설명"처럼 내용 없는 제목은 피한다. 번호를 알면 title 맨 앞에 "69번 · "처럼 넣고 모르면 내용만 쓴다. confidence는 제목과 구간 판단의 확실성에 따라 high/medium/low로 정한다. 동일 문제를 연속으로 중복하지 마라. 최대 120개만 시간순으로 반환한다.`;
 
 export function reconcileAnalysis(data,cues){
  if(!Array.isArray(data?.items)||data.items.length>120)fail('분석 결과 형식이 올바르지 않아요. 기존 초안은 유지했어요.');
@@ -91,11 +91,13 @@ export function validateAnalysis(data,cues){
   if(cue.start<last)fail('분석 시간이 순서에 맞지 않아요.');
   const number=kind==='smalltalk'?'잡담'+(++smalltalkCount):kind==='capture'?'캡쳐구간'+(++captureCount):(item.number??'번호 확인 필요');
   if(rows.length&&rows.at(-1)[0]===number&&number!=='번호 확인 필요')continue;
-  rows.push([number,0,item.title.trim(),label(cue.start),cue.start]);
-  evidence.push({number,kind,time:label(cue.start),text:source,confidence:item.confidence});last=cue.start;
+  const prefix=kind==='problem'?(item.number?item.number+'번':''):number;
+  const topic=item.title.trim(),title=prefix&&!topic.replace(/\s/g,'').startsWith(prefix.replace(/\s/g,''))?prefix+' · '+topic:topic;
+  rows.push([number,0,title,label(cue.start),cue.start]);
+  evidence.push({number,kind,title,time:label(cue.start),text:source,confidence:item.confidence});last=cue.start;
  }
  if(!rows.length)fail('자막에서 타임라인으로 표시할 구간을 찾지 못했어요. 기존 초안은 유지했어요.');
- return {rows,evidence,needs_check:evidence.filter(e=>e.number==='번호 확인 필요'||e.confidence!=='high').length};
+ return {rows,evidence,needs_check:evidence.filter(e=>e.confidence!=='high').length};
 }
 
 export class TimelineAI {
