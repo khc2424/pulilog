@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {TimelineAI,parseCaptions,validateAnalysis} from '../src/timeline-ai.mjs';
+import {TimelineAI,parseCaptions,validateAnalysis,reconcileAnalysis} from '../src/timeline-ai.mjs';
 import {LocalStore} from '../src/store.mjs';
 import {createApp} from '../src/server.mjs';
 import {YouTubeConnection} from '../src/youtube.mjs';
@@ -117,4 +117,27 @@ test('잡담과 캡쳐구간은 문제 번호와 분리하고 영상 전체에�
  });
  const full=await ai.analyze(long,{});assert.ok(calls>1);
  assert.deepEqual(full.rows.map(r=>r[0]),Array.from({length:calls},(_,i)=>['잡담'+(i+1),'캡쳐구간'+(i+1)]).flat());assert.equal(full.needs_check,0);
+});
+
+test('인접 자막에 걸친 원문과 문장부호를 맞추되 먼 시각·다른 숫자·없는 인용은 허용하지 않는다',()=>{
+ const cues=[{id:0,start:10,end:12,text:'자, 12번 문제를'},{id:1,start:12,end:14,text:'이제 풀어 보자.'},{id:2,start:100,end:102,text:'이제 풀어 보자.'},{id:3,start:103,end:105,text:'1.2번 문제야'}];
+ const item={cue_id:0,kind:'problem',number:'12',title:'문제 풀이',evidence:'12번 문제를 이제 풀어 보자',confidence:'high'};
+ let checked=reconcileAnalysis({items:[item]},cues);assert.equal(checked.items.length,1);assert.equal(checked.aligned_count,1);assert.equal(checked.items[0].confidence,'medium');
+ const result=validateAnalysis({items:checked.items},cues);assert.equal(result.rows[0][4],10);assert.equal(result.needs_check,1);assert.ok(result.evidence[0].text.includes('이제 풀어 보자.'));
+ checked=reconcileAnalysis({items:[{...item,evidence:'자 12번 문제를'}]},cues);assert.equal(checked.items.length,1);
+ checked=reconcileAnalysis({items:[{...item,cue_id:1,evidence:'자 12번 문제를'}]},cues);assert.equal(checked.items[0].cue_id,0);
+ for(const changed of [{cue_id:999},{cue_id:0,evidence:'이제 풀어 보자'},{cue_id:3,evidence:'12번 문제야'},{evidence:'원문을 새로 만들어 낸 문장'}]){
+  const rejected=reconcileAnalysis({items:[{...item,...changed}]},cues);
+  if(changed.cue_id===0&&changed.evidence==='이제 풀어 보자'){assert.equal(rejected.items[0].cue_id,1);continue}
+  assert.equal(rejected.items.length,0);assert.equal(rejected.skipped_count,1);
+ }
+ const far=reconcileAnalysis({items:[{...item,cue_id:2,evidence:'자 12번 문제를'}]},cues);assert.equal(far.items.length,0);
+});
+
+test('일부 근거 오류는 제외 개수와 함께 반환하고 전부 잘못되면 결과를 저장하지 않는다',async()=>{
+ const invalid={...answer.items[0],evidence:'자막에 없는 문장'};
+ const ai=new TimelineAI({anthropicKey:'test'},async()=>Response.json({stop_reason:'end_turn',content:[{type:'text',text:JSON.stringify({items:[invalid,answer.items[1]]})}]}));
+ const result=await ai.analyze(subtitles,{});assert.equal(result.rows.length,1);assert.equal(result.skipped_count,1);assert.equal(result.rows[0][4],35);
+ const bad=new TimelineAI({anthropicKey:'test'},async()=>Response.json({stop_reason:'end_turn',content:[{type:'text',text:JSON.stringify({items:[invalid]})}]}));
+ await assert.rejects(bad.analyze(subtitles,{}),/자막과 일치하는 근거/);assert.equal(bad.busy,false);
 });

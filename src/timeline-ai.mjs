@@ -8,6 +8,7 @@ export function captionChunks(cues){
  if(chunk.length)chunks.push(chunk);return chunks;
 }
 const flat=text=>String(text).normalize('NFKC').replace(/\s+/g,'').toLowerCase();
+const quoteKey=text=>flat(text).replace(/[“”‘’"'!?！？]/g,'').replace(/(?<!\d)[.,]|[.,](?!\d)/g,'');
 export const timelineFingerprint=v=>createHash('sha256').update(JSON.stringify([v.timeline,v.timeline_draft,v.reviewed])).digest('hex');
 const label=sec=>sec>=3600?`${Math.floor(sec/3600)}:${String(Math.floor(sec/60)%60).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`:`${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`;
 
@@ -35,14 +36,53 @@ const instructions=`대한민국 수학 수업의 문제별 타임라인을 만�
 문제 풀이 시작은 kind=problem으로 찾아라. 수업과 관계없는 개인 이야기·농담·일상 대화가 독립적으로 이어지는 구간의 시작은 kind=smalltalk으로 표시한다. 수학 설명에 필요한 비유, 수업 안내, 인사 한마디, 잠깐의 웃음은 잡담으로 분류하지 마라. 하나의 이어지는 잡담은 시작 한 번만 표시한다.
 선생님이 실제로 "캡쳐구간", "캡처 구간", "여기 캡처해"처럼 화면 캡처를 안내한 발언은 kind=capture로 표시한다. 캡처 안내가 있다는 자막 근거가 없으면 만들지 마라. capture의 evidence에는 캡쳐·캡처·스크린샷 중 실제로 발언된 표현을 포함한다. smalltalk과 capture는 number=null이다.
  설명 중 다른 문제를 언급하거나 숫자를 계산하는 부분, 이전 문제를 다시 말하는 부분은 새 항목으로 만들지 마라.
-cue_id는 해당 문제·잡담·캡처 안내가 시작하는 실제 자막 id를 사용한다. evidence는 반드시 그 자막 text의 연속된 원문 일부여야 한다. 없는 번호·시간·주제를 상상하지 마라. 문제 번호를 확신할 수 없으면 number=null로 남긴다. title은 짧은 한국어 설명, confidence는 high/medium/low다. 동일 문제를 연속으로 중복하지 마라. 최대 120개만 시간순으로 반환한다.`;
+cue_id는 해당 문제·잡담·캡처 안내가 시작하는 실제 자막 id를 사용한다. evidence는 반드시 그 자막 text의 연속된 원문 일부여야 한다. 문장을 다듬거나 어미·숫자 표기를 고치지 말고 그대로 복사한다. 자막 한 줄이 문장 중간에 끊겨 있어도 그 줄에 있는 부분만 인용한다. 없는 번호·시간·주제를 상상하지 마라. 문제 번호를 확신할 수 없으면 number=null로 남긴다. title은 짧은 한국어 설명, confidence는 high/medium/low다. 동일 문제를 연속으로 중복하지 마라. 최대 120개만 시간순으로 반환한다.`;
+
+export function reconcileAnalysis(data,cues){
+ if(!Array.isArray(data?.items)||data.items.length>120)fail('분석 결과 형식이 올바르지 않아요. 기존 초안은 유지했어요.');
+ const items=[];let skipped_count=0,aligned_count=0;
+ const index=new Map(cues.map((cue,i)=>[cue.id,i]));
+ for(const original of data.items){
+  if(!original||typeof original.evidence!=='string'||!index.has(original.cue_id)){skipped_count++;continue}
+  const at=index.get(original.cue_id),needle=quoteKey(original.evidence);let match=null;
+  if(needle.length<2){skipped_count++;continue}
+  // Only exact normalized quotes in the claimed cue or its immediate context qualify.
+  const candidates=[at,...(needle.length>=6?[at-1,at+1,at-2,at+2]:[])];
+  for(const start of candidates){
+   if(start<0||start>=cues.length||Math.abs(cues[start].start-cues[at].start)>8)continue;
+   let text='',key='';
+   for(let end=start;end<Math.min(cues.length,start+3);end++){
+    if(end>start&&(needle.length<6||cues[end].start-(cues[end-1].end??cues[end-1].start)>3||cues[end].start-cues[start].start>12))break;
+    text+=(end===start?'':' ')+cues[end].text;key+=quoteKey(cues[end].text);
+    const position=key.indexOf(needle);
+    if(position>=0&&position<quoteKey(cues[start].text).length){match={cue:cues[start],text,adjusted:start!==at||end!==start||!flat(cues[at].text).includes(flat(original.evidence))};break}
+   }
+   if(match)break;
+  }
+  if(!match){skipped_count++;continue}
+  const item={...original,cue_id:match.cue.id,evidence:match.text,confidence:match.adjusted&&original.confidence==='high'?'medium':original.confidence};
+  try{validateAnalysis({items:[item]},[{...match.cue,text:match.text}])}catch{skipped_count++;continue}
+  if(match.adjusted)aligned_count++;
+  // Store a real source quote; validation below uses the same small source window.
+  items.push(item);
+ }
+ items.sort((a,b)=>index.get(a.cue_id)-index.get(b.cue_id));
+ return {items,skipped_count,aligned_count};
+}
 
 export function validateAnalysis(data,cues){
  if(!Array.isArray(data?.items)||data.items.length>120)fail('분석 결과 형식이 올바르지 않아요. 기존 초안은 유지했어요.');
  const rows=[],evidence=[];let last=-1,smalltalkCount=0,captureCount=0;
  for(const item of data.items){
   const cue=cues.find(c=>c.id===item.cue_id);
-  if(!cue||!['high','medium','low'].includes(item.confidence)||typeof item.title!=='string'||!item.title.trim()||item.title.length>150||typeof item.evidence!=='string'||flat(item.evidence).length<2||!flat(cue.text).includes(flat(item.evidence)))fail('자막 근거를 확인할 수 없는 결과예요. 기존 초안은 유지했어요.');
+  if(!cue||!['high','medium','low'].includes(item.confidence)||typeof item.title!=='string'||!item.title.trim()||item.title.length>150||typeof item.evidence!=='string'||flat(item.evidence).length<2)fail('자막 근거를 확인할 수 없는 결과예요. 기존 초안은 유지했어요.');
+  const at=cues.indexOf(cue),needle=quoteKey(item.evidence);let source='',found=false;
+  for(let end=at;end<Math.min(cues.length,at+3);end++){
+   if(end>at&&(needle.length<6||cues[end].start-(cues[end-1].end??cues[end-1].start)>3||cues[end].start-cue.start>12))break;
+   source+=(end===at?'':' ')+cues[end].text;const position=quoteKey(source).indexOf(needle);
+   if(position>=0&&position<quoteKey(cue.text).length){found=true;break}
+  }
+  if(!found)fail('자막 근거를 확인할 수 없는 결과예요. 기존 초안은 유지했어요.');
   const kind=item.kind??'problem';
   if(!['problem','smalltalk','capture'].includes(kind))fail('구간 종류를 확인할 수 없는 결과예요.');
   if(kind!=='problem'&&item.number!==null)fail('잡담·캡쳐구간에는 문제 번호를 붙일 수 없어요.');
@@ -52,7 +92,7 @@ export function validateAnalysis(data,cues){
   const number=kind==='smalltalk'?'잡담'+(++smalltalkCount):kind==='capture'?'캡쳐구간'+(++captureCount):(item.number??'번호 확인 필요');
   if(rows.length&&rows.at(-1)[0]===number&&number!=='번호 확인 필요')continue;
   rows.push([number,0,item.title.trim(),label(cue.start),cue.start]);
-  evidence.push({number,kind,time:label(cue.start),text:item.evidence,confidence:item.confidence});last=cue.start;
+  evidence.push({number,kind,time:label(cue.start),text:source,confidence:item.confidence});last=cue.start;
  }
  if(!rows.length)fail('자막에서 타임라인으로 표시할 구간을 찾지 못했어요. 기존 초안은 유지했어요.');
  return {rows,evidence,needs_check:evidence.filter(e=>e.number==='번호 확인 필요'||e.confidence!=='high').length};
@@ -66,7 +106,7 @@ export class TimelineAI {
   if(this.busy)fail('다른 영상 분석이 진행 중이에요. 완료 후 다시 시도해주세요.',429);
   const cues=parseCaptions(text);this.busy=true;
   try{
-   const chunks=captionChunks(cues),items=[];let usage=null;
+   const chunks=captionChunks(cues),items=[];let usage=null,skipped_count=0,aligned_count=0;
    for(const chunk of chunks){
    let response;
    try{response=await this.fetcher('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':this.cfg.anthropicKey,'anthropic-version':'2023-06-01'},body:JSON.stringify({model:this.status().model,max_tokens:8000,system:instructions,messages:[{role:'user',content:JSON.stringify({lesson:{title:video.title,book:video.book,subject:video.subject,unit:video.unit},captions:chunk})}],output_config:{format:{type:'json_schema',schema}}}),signal:AbortSignal.timeout(120000)})}catch{fail('AI 응답이 지연됐어요. 초안은 변경하지 않았어요.')}
@@ -74,10 +114,11 @@ export class TimelineAI {
    const body=await response.json();if(body.stop_reason!=='end_turn')fail('AI 응답이 끝까지 완성되지 않았어요. 초안은 변경하지 않았어요.');
    let data;try{data=JSON.parse(body.content?.filter(c=>c.type==='text').map(c=>c.text).join('')||'')}catch{fail('AI 결과를 읽지 못했어요. 초안은 변경하지 않았어요.')}
    if(!Array.isArray(data.items))fail('분석 결과 형식이 올바르지 않아요. 기존 초안은 유지했어요.');
-   if(data.items.length){validateAnalysis(data,chunk);items.push(...data.items)}
+   if(data.items.length){const checked=reconcileAnalysis(data,chunk);items.push(...checked.items);skipped_count+=checked.skipped_count;aligned_count+=checked.aligned_count}
    if(body.usage){usage||={input_tokens:0,output_tokens:0};usage.input_tokens+=body.usage.input_tokens||0;usage.output_tokens+=body.usage.output_tokens||0}
    }
-   return {...validateAnalysis({items},cues),cue_count:cues.length,chunk_count:chunks.length,model:this.status().model,usage};
+   if(!items.length&&skipped_count)fail('AI가 자막과 일치하는 근거를 반환하지 못했어요. 기존 초안은 유지했어요.');
+   return {...validateAnalysis({items},cues),skipped_count,aligned_count,cue_count:cues.length,chunk_count:chunks.length,model:this.status().model,usage};
   }finally{this.busy=false}
  }
 }
