@@ -33,7 +33,7 @@ function cookieToken(req,role){const name=role==='teacher'?'axis_admin':'axis_st
 export function createApp(cfg,store,options={}){
  const youtube=new YouTubeConnection(cfg,store,options.youtubeFetch);
  const youtubeAuto=new YouTubeAutoImport(cfg,store,youtube);
- const timelineAI=new TimelineAI(cfg,options.aiFetch);
+ const timelineAI=new TimelineAI(cfg,options.aiFetch,{cache:{get:async key=>(await store.all('settings',{key:'youtube_timeline_chunk_'+key}))[0]?.value,set:async(key,value)=>store.put('settings',{key:'youtube_timeline_chunk_'+key,value})}});
  const presence=new StudentPresence();
  const activity=new StudentActivity(store);
  const timelineComments=new YouTubeTimelineComments(store,youtube);
@@ -43,7 +43,7 @@ export function createApp(cfg,store,options={}){
     const fingerprint=timelineFingerprint(video),result=await timelineAI.analyze(d.captions,video);
     const latest=(await store.all('videos',{id}))[0];check(latest,'분석 중 영상이 삭제됐어요. 결과를 저장하지 않았어요.',404);
     check(timelineFingerprint(latest)===fingerprint,'분석 중 타임라인이 변경되어 결과를 덮어쓰지 않았어요.',412);
-    const analysis={created_at:new Date().toISOString(),model:result.model,source:d.source==='youtube'?'youtube':'file',evidence:result.evidence,needs_check:result.needs_check,cue_count:result.cue_count,skipped_count:result.skipped_count||0,aligned_count:result.aligned_count||0,usage:result.usage};
+    const analysis={created_at:new Date().toISOString(),model:result.model,source:d.source==='youtube'?'youtube':'file',evidence:result.evidence,needs_check:result.needs_check,cue_count:result.cue_count,chunk_count:result.chunk_count,api_calls:result.api_calls,cached_chunk_count:result.cached_chunk_count,split_count:result.split_count,skipped_count:result.skipped_count||0,aligned_count:result.aligned_count||0,usage:result.usage};
     await store.patch('videos',{id},{timeline_draft:result.rows,reviewed:false});
     await store.put('settings',{key:'youtube_timeline_analysis_'+id,value:analysis});
     return {rows:result.rows,analysis};

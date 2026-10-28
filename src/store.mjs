@@ -5,14 +5,14 @@ import { dirname } from 'node:path';
 const tables=new Set(['classes','students','videos','video_classes','favorites','sessions','settings']);
 const keyOf=(t,r)=>t==='classes'?r.name:t==='sessions'?r.digest:t==='settings'?r.key:t==='video_classes'?`${r.video_id}:${r.class_name}`:t==='favorites'?`${r.student_id}:${r.video_id}`:String(r.id);
 const match=(r,f)=>Object.entries(f).every(([k,v])=>r[k]===v);
-const activityPrefix='youtube_student_activity_';
+const activityPrefix='youtube_student_activity_',payloadPrefixes=[activityPrefix,'youtube_timeline_chunk_'];
 const selectFields=fields=>{if(fields===null)return '*';if(!Array.isArray(fields)||!fields.length||fields.some(f=>!/^[a-z_]+$/.test(f)))throw new Error('Invalid fields');return fields.join(',')};
 export class StoreError extends Error { constructor(status=503){super('데이터 저장소 연결을 확인해주세요.');this.status=status} }
 
 export class LocalStore {
  constructor(path){if(path!==':memory:')mkdirSync(dirname(path),{recursive:true});this.db=new DatabaseSync(path);this.db.exec('PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS records(t TEXT NOT NULL,k TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(t,k)); CREATE TABLE IF NOT EXISTS rate_limits(k TEXT PRIMARY KEY,n INTEGER NOT NULL,until REAL NOT NULL);')}
  rows(t){if(!tables.has(t))throw new Error('Unknown table');return this.db.prepare('SELECT data FROM records WHERE t=?').all(t).map(r=>JSON.parse(r.data))}
- async all(t,f={},fields=null){selectFields(fields);const rows=this.rows(t).filter(r=>match(r,f)&&(t!=='settings'||f.key!==undefined||!r.key.startsWith(activityPrefix)));return fields?rows.map(r=>Object.fromEntries(fields.map(k=>[k,r[k]]))):rows}
+ async all(t,f={},fields=null){selectFields(fields);const rows=this.rows(t).filter(r=>match(r,f)&&(t!=='settings'||f.key!==undefined||!payloadPrefixes.some(prefix=>r.key.startsWith(prefix))));return fields?rows.map(r=>Object.fromEntries(fields.map(k=>[k,r[k]]))):rows}
  async settingsPrefix(prefix){if(!/^[a-zA-Z0-9_-]{1,150}$/.test(prefix))throw new Error('Invalid prefix');return this.rows('settings').filter(r=>r.key.startsWith(prefix))}
  write(t,r){if(!tables.has(t))throw new Error('Unknown table');this.db.prepare('INSERT INTO records VALUES(?,?,?) ON CONFLICT(t,k) DO UPDATE SET data=excluded.data').run(t,keyOf(t,r),JSON.stringify(r));return r}
  async put(t,r){if(t==='students'&&r.id==null)r={...r,id:Math.max(0,...this.rows(t).map(x=>x.id))+1};return this.write(t,r)}
@@ -37,7 +37,7 @@ export class SupabaseStore {
   return res.status===204?null:res.json();
  }
  query(t,f){if(!tables.has(t))throw new Error('Unknown table');const p=new URLSearchParams();for(const [k,v]of Object.entries(f)){if(!/^[a-z_]+$/.test(k))throw new Error('Invalid field');p.set(k,`eq.${v}`)}return `pl_${t}?${p}`}
- async all(t,f={},fields=null){const select=selectFields(fields),out=[];for(let offset=0;offset<100000;offset+=1000){const rows=await this.request(`${this.query(t,f)}${t==='settings'&&f.key===undefined?'&key=not.like.'+activityPrefix+'*':''}&select=${select}&limit=1000&offset=${offset}&order=${t==='students'?'id':t==='classes'?'name':t==='videos'?'id':t==='settings'?'key':t==='sessions'?'digest':t==='favorites'?'student_id,video_id':'video_id,class_name'}`);out.push(...rows);if(rows.length<1000)return out}throw new StoreError()}
+ async all(t,f={},fields=null){const select=selectFields(fields),out=[];for(let offset=0;offset<100000;offset+=1000){const rows=await this.request(`${this.query(t,f)}${t==='settings'&&f.key===undefined?payloadPrefixes.map(prefix=>'&key=not.like.'+prefix+'*').join(''):''}&select=${select}&limit=1000&offset=${offset}&order=${t==='students'?'id':t==='classes'?'name':t==='videos'?'id':t==='settings'?'key':t==='sessions'?'digest':t==='favorites'?'student_id,video_id':'video_id,class_name'}`);out.push(...rows);if(rows.length<1000)return out}throw new StoreError()}
  async settingsPrefix(prefix){if(!/^[a-zA-Z0-9_-]{1,150}$/.test(prefix))throw new Error('Invalid prefix');const out=[];for(let offset=0;offset<100000;offset+=1000){const rows=await this.request('pl_settings?'+new URLSearchParams({key:'like.'+prefix+'*',select:'key,value',order:'key',limit:'1000',offset:String(offset)}));out.push(...rows.filter(r=>r.key.startsWith(prefix)));if(rows.length<1000)return out}throw new StoreError()}
  async put(t,r){const rows=await this.request(`pl_${t}`,{method:'POST',body:r,headers:{Prefer:'resolution=merge-duplicates,return=representation'}});return rows[0]}
  async del(t,f){await this.request(this.query(t,f),{method:'DELETE',headers:{Prefer:'return=minimal'}})}
