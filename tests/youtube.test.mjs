@@ -234,3 +234,11 @@ test('유튜브 연결 API는 선생님 전용이고 비밀 설정은 응답에 
   assert.equal(callback.status,303);assert.ok(callback.headers.get('location').endsWith('/?youtube=failed#settings'));
  }finally{await new Promise(r=>app.close(r));store.close()}
 });
+
+test('유튜브 조회·자막 다운로드 실패는 한도·권한·설정·일시 장애를 구분하고 원문 비밀값을 노출하지 않는다',async()=>{
+ const {youtubeRequestFailure}=await import('../src/youtube.mjs');
+ for(const [status,reason,pattern] of [[403,'quotaExceeded',/사용 한도/],[403,'forbidden',/자막 접근이 거절/],[403,'accessNotConfigured',/사용 설정/],[403,'insufficientPermissions',/권한/],[401,'',/인증이 만료/],[503,'backendError',/일시적/],[403,'unsupportedReason',/오류 코드: unsupportedReason/]]){
+  await assert.rejects(youtubeRequestFailure(Response.json({error:{message:'private-access-token',errors:[{reason}]}},{status}),'자막 목록 조회'),error=>pattern.test(error.message)&&!error.message.includes('private-access-token'));
+ }
+ const store=new LocalStore(':memory:');try{const yt=new YouTubeConnection({sessionSecret:'test'},store,async()=>Response.json({error:{errors:[{reason:'quotaExceeded'}]}},{status:403}));await assert.rejects(yt.api('captions',{videoId:'test'},'private'),/사용 한도/)}finally{store.close()}
+});
