@@ -28,7 +28,7 @@ function syncStudentPresence(){
  else if(studentPresenceTimer){clearInterval(studentPresenceTimer);studentPresenceTimer=null;sendStudentPresence(false,true)}
 }
 function stopLessonTracking(){
- if(!presenceVideoId)return;presenceGeneration++;const old=presencePlayer;presencePlayer=null;presenceVideoId='';presencePlayerState='browsing';try{old?.destroy()}catch{}sendStudentPresence();
+ if(!presenceVideoId)return;sendStudentPresence(true,true);presenceGeneration++;const old=presencePlayer;presencePlayer=null;presenceVideoId='';presencePlayerState='browsing';try{old?.destroy()}catch{}sendStudentPresence();
 }
 async function startLessonTracking(id){
  stopLessonTracking();const generation=++presenceGeneration;presenceVideoId=id;presencePlayerState='loading';sendStudentPresence();
@@ -45,7 +45,7 @@ function studentPresenceView(){
 async function refreshPresenceDashboard(){
  if(studentMode||!teacherAuthorized||page!=='overview'){if(teacherPresenceTimer){clearInterval(teacherPresenceTimer);teacherPresenceTimer=null}return}
  if(teacherPresencePolling)return;teacherPresencePolling=true;
- try{teacherPresenceRows=(await requestAPI('/api/teacher/presence')).students;const panel=$('#student-presence-panel');if(panel)panel.innerHTML=studentPresenceView()}catch{}finally{teacherPresencePolling=false}
+ try{teacherPresenceRows=(await requestAPI('/api/teacher/presence')).students;const panel=$('#student-presence-panel');if(panel)panel.innerHTML=studentPresenceView();if(typeof refreshStudentQuestions==='function')await refreshStudentQuestions()}catch{}finally{teacherPresencePolling=false}
 }
 function bindPresenceDashboard(){
  if(teacherPresenceTimer){clearInterval(teacherPresenceTimer);teacherPresenceTimer=null}

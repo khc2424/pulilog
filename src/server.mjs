@@ -1,3 +1,5 @@
+import {StudentTools} from './student-tools.mjs';
+import {AIUsage} from './ai-usage.mjs';
 import {LearningWorkspace} from './learning-workspace.mjs';
 import {StudentActivity} from './student-activity.mjs';
 import { YouTubeTimelineComments,timelineCommentText } from './youtube-comments.mjs';
@@ -20,7 +22,7 @@ import { TimelineAI,timelineFingerprint,parseCaptions } from './timeline-ai.mjs'
 import { YouTubeAutoImport } from './youtube-auto.mjs';
 
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'../public');
-const assets=new Map([['/','index.html'],...['index.html','search.js','app.js','accounts.js','teacher.js','workbench.js','production.js','timeline-ai.js','presence.js','student-records.js','learning.js','timeline-batch.js','curriculum.js','textbooks.js','style.css'].map(f=>['/'+f,f])]);
+const assets=new Map([['/','index.html'],...['index.html','search.js','app.js','accounts.js','teacher.js','workbench.js','production.js','timeline-ai.js','presence.js','student-records.js','student-tools.js','learning.js','timeline-batch.js','curriculum.js','textbooks.js','style.css'].map(f=>['/'+f,f])]);
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const clean=(v,max=300)=>String(v??'').trim().slice(0,max);
 const check=(ok,message='입력 내용을 확인해주세요.',status=400)=>{if(!ok){const e=new Error(message);e.status=status;throw e}};
@@ -33,7 +35,8 @@ function cookieToken(req,role){const name=role==='teacher'?'axis_admin':'axis_st
 export function createApp(cfg,store,options={}){
  const youtube=new YouTubeConnection(cfg,store,options.youtubeFetch);
  const youtubeAuto=new YouTubeAutoImport(cfg,store,youtube);
- const timelineAI=new TimelineAI(cfg,options.aiFetch,{cache:{get:async key=>(await store.all('settings',{key:'youtube_timeline_chunk_'+key}))[0]?.value,set:async(key,value)=>store.put('settings',{key:'youtube_timeline_chunk_'+key,value})}});
+ const aiUsage=new AIUsage(store),studentTools=new StudentTools(store);
+ const timelineAI=new TimelineAI(cfg,aiUsage.wrap(options.aiFetch),{cache:{get:async key=>(await store.all('settings',{key:'youtube_timeline_chunk_'+key}))[0]?.value,set:async(key,value)=>store.put('settings',{key:'youtube_timeline_chunk_'+key,value})}});
  const presence=new StudentPresence();
  const activity=new StudentActivity(store);
  const timelineComments=new YouTubeTimelineComments(store,youtube);
@@ -52,11 +55,12 @@ export function createApp(cfg,store,options={}){
   const video=(await store.all('videos',{id:job.video_id}))[0];
   if(!video)return {skipped:true,reason:'삭제된 영상이라 건너뛰었어요.'};
   if(video.timeline_draft?.length||video.timeline?.length)return {skipped:true,reason:'이미 타임라인이나 초안이 있어 건너뛰었어요.'};
+  await aiUsage.available();
   const caption=await youtube.downloadCaptions(video.id);
   return analyzeTimeline({id:video.id,captions:caption.text,source:'youtube'});
  },()=>timelineAI.busy);
  const books=new TextbookLibrary(store,options.bookFiles||(cfg.driver==='supabase'?new SupabaseBookFiles(cfg.supabaseUrl,cfg.supabaseKey,options.storageFetch):new LocalBookFiles(resolve(dirname(cfg.dbPath||resolve('.private/pulilog.sqlite3')),'textbooks'))));
- const learning=new LearningWorkspace(cfg,store,youtube,books,options.learningFetch||options.aiFetch,()=>timelineAI.busy||timelineQueue.running);
+ const learning=new LearningWorkspace(cfg,store,youtube,books,aiUsage.wrap(options.learningFetch||options.aiFetch),()=>timelineAI.busy||timelineQueue.running);
  const oauthCookie=(value,expire=false)=>`pl_youtube_state=${value}; Path=/api/youtube/callback; HttpOnly; SameSite=Lax; Max-Age=${expire?0:600}${cfg.production?'; Secure':''}`;
  const send=(res,status,data,cookie)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8',...(cookie?{'Set-Cookie':cookie}:{})});res.end(JSON.stringify(data))};
  const cookie=(role,token,remember=false,expire=false)=>`${role==='teacher'?'axis_admin':'axis_student'}=${token}; Path=/; HttpOnly; SameSite=Strict${cfg.production?'; Secure':''}${expire?'; Max-Age=0':remember?'; Max-Age=2592000':''}`;
@@ -88,6 +92,12 @@ export function createApp(cfg,store,options={}){
     return send(res,200,await youtubeAuto.run(req.headers.authorization));
    }
    if(req.method==='GET'&&path==='/api/status')return send(res,200,{name:'풀이로그',database:cfg.driver,environment:cfg.production?'production':'development',youtube_connected:(await youtube.status()).connected,video_analysis_connected:false,timeline_analysis_configured:timelineAI.status().configured,demo_data:false});
+   if(req.method==='GET'&&path==='/api/student/resume'){
+    const student=await requireRole(req),id=url.searchParams.get('id');check((await allowedVideos(student)).some(v=>v.id===id),'이 반에서 볼 수 없는 영상이에요.',403);
+    const resume=await studentTools.resume(student,id);return send(res,200,{resume:resume?{position_seconds:resume.position_seconds,ended:resume.ended,updated_at:resume.updated_at}:null});
+   }
+   if(req.method==='GET'&&path==='/api/teacher/questions'){await requireRole(req,'teacher');return send(res,200,{questions:await studentTools.questions()})}
+   if(req.method==='GET'&&path==='/api/teacher/ai-usage'){await requireRole(req,'teacher');return send(res,200,await aiUsage.report())}
    if(req.method==='GET'&&path==='/api/session'){const s=await session(req,'student');return send(res,200,{student:s?{id:s.id,name:s.name,class_name:s.class_name}:null,teacher:!!await session(req,'teacher')})}
    if(req.method==='GET'&&path==='/api/videos'){const s=await requireRole(req);const fav=new Set((await store.all('favorites',{student_id:s.id})).map(f=>f.video_id));return send(res,200,{videos:(await allowedVideos(s)).map(v=>publicVideo(v,fav.has(v.id)))})}
    const pdfRoute=path.match(/^\/api\/teacher\/textbooks\/([0-9a-f-]+)\/file$/);
@@ -135,11 +145,15 @@ export function createApp(cfg,store,options={}){
     if(path==='/api/teacher/login'){check(timingSafeEqual(Buffer.from(hash(String(d.code||''))),Buffer.from(hash(cfg.adminCode))),'선생님 접속 코드를 확인해주세요.',401);return send(res,200,{ok:true},await newSession('teacher'))}
     const s=(await store.all('students',{phone:phone(d.phone),active:true}))[0];check(s,'등록된 번호를 확인해주세요.',401);return send(res,200,{student:{id:s.id,name:s.name,class_name:s.class_name}},await newSession('student',s.id,d.remember===true));
    }
+   if(path==='/api/student/question'){
+    const student=await requireRole(req),video=(await allowedVideos(student)).find(v=>v.id===d.video_id);check(video,'이 반에서 볼 수 없는 영상이에요.',403);
+    return send(res,200,await studentTools.ask(student,video,d));
+   }
    if(path==='/api/presence'||path==='/api/student/youtube-open'){
     const student=await requireRole(req),studentSession=await sessionRecord(req),videoId=String(d.video_id||'');let video=null;
     if(videoId){const [videos,relations]=await Promise.all([store.all('videos',{id:videoId},['id','title','published']),store.all('video_classes',{video_id:videoId,class_name:student.class_name})]);check(videos[0]?.published&&relations.length,'이 반에서 볼 수 없는 영상이에요.',403);video=videos[0]}
     if(path==='/api/student/youtube-open'){check(video,'영상을 선택해주세요.');await activity.mutate(studentSession,student,d,video,{external:true})}
-    else{presence.update(studentSession,student,d);await activity.mutate(studentSession,student,d,video)}
+    else{presence.update(studentSession,student,d);await activity.mutate(studentSession,student,d,video);if(video)await studentTools.saveResume(student,d)}
     return send(res,200,{ok:true});
    }
    if(path==='/api/logout'||path==='/api/teacher/logout'){const role=path.includes('/teacher/')?'teacher':'student';const token=cookieToken(req,role);if(token){if(role==='student')await activity.logout({digest:hash(token)});presence.removeSession(hash(token));await store.del('sessions',{digest:hash(token)})}return send(res,200,{ok:true},cookie(role,'',false,true))}
@@ -231,6 +245,8 @@ export function createApp(cfg,store,options={}){
     const videos=await store.all('videos'),selected=[...new Set(d.ids)].map(id=>videos.find(v=>v.id===id));check(selected.every(Boolean),'목록에 없는 영상이 있어요. 새로고침 후 다시 선택해주세요.');
     return send(res,202,{jobs:await timelineQueue.enqueue(selected),already_completed:selected.filter(v=>v.timeline_draft?.length||v.timeline?.length).length});
    }
+   if(path==='/api/teacher/question/resolve'){await studentTools.resolve(String(d.id||''),d.resolved);return send(res,200,{ok:true})}
+   if(path==='/api/teacher/ai-limits'){await aiUsage.save(d);return send(res,200,await aiUsage.report())}
    if(path==='/api/teacher/timeline/jobs/cancel'){await timelineQueue.cancel(d.id);return send(res,200,{ok:true})}
    if(path==='/api/teacher/timeline/analyze'){
     return send(res,200,await analyzeTimeline(d));

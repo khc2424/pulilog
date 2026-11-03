@@ -26,7 +26,7 @@ test('검토 완료는 저장 성공 후 목록으로 돌아가고 작업을 숨
 test('강의 영상 팝업은 전용 레이아웃과 별도 타임라인 스크롤 영역을 사용한다',async()=>{
  const source=await readFile(new URL('../public/accounts.js',import.meta.url),'utf8');
  const action=source.slice(source.indexOf('async function openCourse('),source.indexOf("document.addEventListener('click'",source.indexOf('async function openCourse(')));
- let html='',layout='';const context={location:{origin:'http://localhost'},refreshStudent:async()=>{},signedStudent:{id:1},libraryVideos:[{id:'video',title:'강의',book:'교재',subject:'과목',unit:'단원',timeline:[['1',0,'설명','00:10',10]]}],esc:String,timelineDescription:r=>r[2],openModal:(text,kind)=>{html=text;layout=kind},toast:()=>{}};
+ let html='',layout='';const context={courseOpenGeneration:0,$:()=>null,location:{origin:'http://localhost'},refreshStudent:async()=>{},signedStudent:{id:1},libraryVideos:[{id:'video',title:'강의',book:'교재',subject:'과목',unit:'단원',timeline:[['1',0,'설명','00:10',10]]}],esc:String,timelineDescription:r=>r[2],openModal:(text,kind)=>{html=text;layout=kind},toast:()=>{}};
  runInNewContext(action,context);await context.openCourse('video');assert.equal(layout,'lesson');assert.ok(html.includes('lesson-modal-layout'));assert.ok(html.includes('lesson-main'));assert.ok(html.includes('lesson-timeline-scroll'));assert.equal((html.match(/id="lesson-player"/g)||[]).length,1);assert.equal((html.match(/id="original-video-link"/g)||[]).length,1);
 });
 

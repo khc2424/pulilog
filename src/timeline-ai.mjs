@@ -127,7 +127,7 @@ export class TimelineAI {
     }
     if(api_calls>=64)fail('한 번의 분석 처리 한도에 도달했어요. 완성된 구간은 보관했으며 다시 요청하면 남은 구간부터 이어가요.');
     api_calls++;let response;
-    try{response=await this.fetcher('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':this.cfg.anthropicKey,'anthropic-version':'2023-06-01'},body:JSON.stringify({model:this.status().model,max_tokens:8000,system:instructions,messages:[{role:'user',content:JSON.stringify(payload)}],output_config:{format:{type:'json_schema',schema}}}),signal:AbortSignal.timeout(120000)})}catch{fail('AI 응답이 지연됐어요. 완성된 구간은 보관했으며 기존 초안은 유지했어요.')}
+    try{response=await this.fetcher('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':this.cfg.anthropicKey,'anthropic-version':'2023-06-01'},body:JSON.stringify({model:this.status().model,max_tokens:8000,system:instructions,messages:[{role:'user',content:JSON.stringify(payload)}],output_config:{format:{type:'json_schema',schema}}}),signal:AbortSignal.timeout(120000)})}catch(error){if(error.ai_guard)throw error;fail('AI 응답이 지연됐어요. 완성된 구간은 보관했으며 기존 초안은 유지했어요.')}
     if(!response.ok){if(response.status===401||response.status===403)fail('Claude API 키와 이용 권한을 확인해주세요.');if(response.status===429)fail('Claude 사용 한도에 도달했어요. 완성된 구간은 보관했으며 잠시 후 다시 요청해주세요.',429);fail('Claude 모델 설정·결제 잔액·서비스 상태를 확인해주세요.')}
     const body=await response.json();addUsage(body.usage);
     if(['max_tokens','model_context_window_exceeded'].includes(body.stop_reason)){

@@ -5,7 +5,7 @@ import { dirname } from 'node:path';
 const tables=new Set(['classes','students','videos','video_classes','favorites','sessions','settings']);
 const keyOf=(t,r)=>t==='classes'?r.name:t==='sessions'?r.digest:t==='settings'?r.key:t==='video_classes'?`${r.video_id}:${r.class_name}`:t==='favorites'?`${r.student_id}:${r.video_id}`:String(r.id);
 const match=(r,f)=>Object.entries(f).every(([k,v])=>r[k]===v);
-const activityPrefix='youtube_student_activity_',payloadPrefixes=[activityPrefix,'youtube_timeline_chunk_'];
+const activityPrefix='youtube_student_activity_',payloadPrefixes=[activityPrefix,'youtube_timeline_chunk_','youtube_resume_','youtube_question_','youtube_ai_call_'];
 const selectFields=fields=>{if(fields===null)return '*';if(!Array.isArray(fields)||!fields.length||fields.some(f=>!/^[a-z_]+$/.test(f)))throw new Error('Invalid fields');return fields.join(',')};
 export class StoreError extends Error { constructor(status=503){super('데이터 저장소 연결을 확인해주세요.');this.status=status} }
 
