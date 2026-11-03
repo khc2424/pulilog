@@ -52,7 +52,7 @@ test('AI 결과는 초안에만 저장하고 학생에게 비공개, 동시 수�
   assert.equal((await store.all('videos',{id:video.id}))[0].timeline_draft[0][0],'9');
   const specialRows=[['잡담1',0,'주말 이야기','00:20',20],['캡쳐구간1',0,'화면 캡처 안내','00:40',40]];
   assert.equal((await post('/api/teacher/timeline',{id:video.id,rows:specialRows,publish:true},teacher)).status,200);
-  const published=await (await fetch(cfg.origin+'/api/videos',{headers:{Cookie:student}})).json();assert.deepEqual(published.videos[0].timeline,specialRows);
+  const published=await (await fetch(cfg.origin+'/api/videos',{headers:{Cookie:student}})).json();assert.deepEqual(published.videos[0].timeline,[specialRows[1]]);
 
  }finally{await new Promise(r=>app.close(r));store.close()}
 });
@@ -91,7 +91,7 @@ test('90분 한국어 자막은 240KB를 넘어도 자동 분할하고 원래 �
  }finally{await new Promise(r=>app.close(r));store.close()}
 });
 
-test('잡담과 캡쳐구간은 문제 번호와 분리하고 영상 전체에서 각각 순번을 붙인다',async()=>{
+test('이전 잡담 결과를 읽을 수 있으나 새 AI 결과에서는 제외하고 캡쳐구간은 유지한다',async()=>{
  const cues=[
   {id:0,start:1,text:'1번 문제를 풀자'},
   {id:1,start:20,text:'어제 선생님이 길을 잘못 들어서 말이야'},
@@ -116,7 +116,7 @@ test('잡담과 캡쳐구간은 문제 번호와 분리하고 영상 전체에�
   return Response.json({stop_reason:'end_turn',content:[{type:'text',text:JSON.stringify({items})}]});
  });
  const full=await ai.analyze(long,{});assert.ok(calls>1);
- assert.deepEqual(full.rows.map(r=>r[0]),Array.from({length:calls},(_,i)=>['잡담'+(i+1),'캡쳐구간'+(i+1)]).flat());assert.equal(full.needs_check,0);
+ assert.deepEqual(full.rows.map(r=>r[0]),Array.from({length:calls},(_,i)=>'캡쳐구간'+(i+1)));assert.equal(full.needs_check,0);
 });
 
 test('인접 자막에 걸친 원문과 문장부호를 맞추되 먼 시각·다른 숫자·없는 인용은 허용하지 않는다',()=>{

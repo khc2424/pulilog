@@ -18,7 +18,7 @@ import { summarizeTeachingStyles } from './teaching-style.mjs';
 import { normalizeSchedule,daysForSchedule } from './schedules.mjs';
 import { canonicalClassName,mergeClassAliases,titleClassAlias } from './classes.mjs';
 import { YouTubeConnection,publicSettings,youtubeYear } from './youtube.mjs';
-import { TimelineAI,timelineFingerprint,parseCaptions } from './timeline-ai.mjs';
+import { TimelineAI,timelineFingerprint,parseCaptions,withoutSmalltalk } from './timeline-ai.mjs';
 import { YouTubeAutoImport } from './youtube-auto.mjs';
 
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'../public');
@@ -27,8 +27,8 @@ const hash=s=>createHash('sha256').update(s).digest('hex');
 const clean=(v,max=300)=>String(v??'').trim().slice(0,max);
 const check=(ok,message='입력 내용을 확인해주세요.',status=400)=>{if(!ok){const e=new Error(message);e.status=status;throw e}};
 const phone=v=>{const p=clean(v).replace(/[^0-9]/g,'');check(/^010\d{8}$/.test(p),'휴대폰 번호 11자리를 입력해주세요.');return p};
-function publicVideo(v,favorite=false){return Object.fromEntries([...['id','title','class_name','book','subject','unit','added_at','timeline','youtube_published_at'].map(k=>[k,v[k]]),['favorite',favorite],['is_new',Date.now()/1000-v.added_at<604800]])}
-function cleanRows(rows){check(Array.isArray(rows)&&rows.length<=500);return rows.map(r=>{check(Array.isArray(r)&&r.length===5);const [n,p,t,,sec]=r;check(clean(t)&&Number.isInteger(sec)&&sec>=0&&sec<=86400&&Number.isInteger(Number(p||0))&&Number(p||0)>=0&&Number(p||0)<=10000);const label=sec>=3600?`${Math.floor(sec/3600)}:${String(Math.floor(sec%3600/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`:`${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`;return[clean(n,30),Number(p||0),clean(t,200),label,sec]})}
+function publicVideo(v,favorite=false){return Object.fromEntries([...['id','title','class_name','book','subject','unit','added_at','timeline','youtube_published_at'].map(k=>[k,k==='timeline'?withoutSmalltalk(v[k]):v[k]]),['favorite',favorite],['is_new',Date.now()/1000-v.added_at<604800]])}
+function cleanRows(rows){check(Array.isArray(rows)&&rows.length<=500);return withoutSmalltalk(rows).map(r=>{check(Array.isArray(r)&&r.length===5);const [n,p,t,,sec]=r;check(clean(t)&&Number.isInteger(sec)&&sec>=0&&sec<=86400&&Number.isInteger(Number(p||0))&&Number(p||0)>=0&&Number(p||0)<=10000);const label=sec>=3600?`${Math.floor(sec/3600)}:${String(Math.floor(sec%3600/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`:`${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`;return[clean(n,30),Number(p||0),clean(t,200),label,sec]})}
 async function body(req,max=100000){let n=0;const chunks=[];for await(const c of req){n+=c.length;check(n<=max,'입력 내용이 너무 길어요.',413);chunks.push(c)}let d;try{d=JSON.parse(Buffer.concat(chunks).toString()||'{}')}catch{check(false,'입력 형식을 확인해주세요.')}check(d&&typeof d==='object'&&!Array.isArray(d));return d}
 function cookieToken(req,role){const name=role==='teacher'?'axis_admin':'axis_student';return (req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(name+'='))?.slice(name.length+1)||''}
 
@@ -247,6 +247,17 @@ export function createApp(cfg,store,options={}){
    }
    if(path==='/api/teacher/question/resolve'){await studentTools.resolve(String(d.id||''),d.resolved);return send(res,200,{ok:true})}
    if(path==='/api/teacher/ai-limits'){await aiUsage.save(d);return send(res,200,await aiUsage.report())}
+   if(path==='/api/teacher/timeline/remove-smalltalk'){
+    let videos=0,removed=0;
+    for(const video of await store.all('videos')){
+     const timeline=withoutSmalltalk(video.timeline),draft=video.timeline_draft===null?null:withoutSmalltalk(video.timeline_draft);
+     const count=video.timeline.length-timeline.length+(video.timeline_draft?.length||0)-(draft?.length||0);if(!count)continue;
+     await store.patch('videos',{id:video.id},{timeline,timeline_draft:draft});videos++;removed+=count;
+     const key='youtube_timeline_analysis_'+video.id,info=(await store.all('settings',{key}))[0]?.value;
+     if(info?.evidence){const evidence=info.evidence.filter(e=>e.kind!=='smalltalk'&&!/^잡담\s*\d*$/.test(e.number||''));await store.put('settings',{key,value:{...info,evidence,needs_check:evidence.filter(e=>e.confidence!=='high').length}})}
+    }
+    return send(res,200,{videos,removed});
+   }
    if(path==='/api/teacher/timeline/jobs/cancel'){await timelineQueue.cancel(d.id);return send(res,200,{ok:true})}
    if(path==='/api/teacher/timeline/analyze'){
     return send(res,200,await analyzeTimeline(d));
