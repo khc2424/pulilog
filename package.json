@@ -10,9 +10,14 @@
     "start": "node --env-file-if-exists=.env src/server.mjs",
     "dev": "node --env-file-if-exists=.env --watch src/server.mjs",
     "test": "node --test --test-concurrency=1 tests/*.test.mjs",
-    "check": "node scripts/check.mjs"
+    "check": "node scripts/check.mjs",
+    "build:motion": "node scripts/build-motion.mjs"
   },
   "dependencies": {
+    "motion": "14.9.0",
     "pdf-lib": "^1.17.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
   }
 }

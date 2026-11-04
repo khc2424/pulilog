@@ -22,7 +22,7 @@ import { TimelineAI,timelineFingerprint,parseCaptions,withoutSmalltalk } from '.
 import { YouTubeAutoImport } from './youtube-auto.mjs';
 
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'../public');
-const assets=new Map([['/','index.html'],...['index.html','search.js','app.js','accounts.js','teacher.js','workbench.js','production.js','timeline-ai.js','presence.js','student-records.js','student-tools.js','learning.js','timeline-batch.js','curriculum.js','textbooks.js','style.css'].map(f=>['/'+f,f])]);
+const assets=new Map([['/','index.html'],...['index.html','motion-vendor.js','motion-LICENSE.txt','ui-motion.js','search.js','app.js','accounts.js','teacher.js','workbench.js','production.js','timeline-ai.js','presence.js','student-records.js','student-tools.js','learning.js','timeline-batch.js','curriculum.js','textbooks.js','style.css'].map(f=>['/'+f,f])]);
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const clean=(v,max=300)=>String(v??'').trim().slice(0,max);
 const check=(ok,message='입력 내용을 확인해주세요.',status=400)=>{if(!ok){const e=new Error(message);e.status=status;throw e}};

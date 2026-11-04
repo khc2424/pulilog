@@ -136,7 +136,7 @@ document.addEventListener('click',async e=>{
  if(el.dataset.openCourse){modalTrigger=el;openCourse(el.dataset.openCourse)}
  if(el.dataset.favorite){
   const v=libraryVideos.find(v=>v.id===el.dataset.favorite);if(!v)return;el.disabled=true;
-  try{const result=await requestAPI('/api/favorite',{video_id:v.id,favorite:!v.favorite});v.favorite=result.favorite;render()}catch(error){toast(error.message);el.disabled=false}
+  try{const result=await requestAPI('/api/favorite',{video_id:v.id,favorite:!v.favorite});v.favorite=result.favorite;render();window.PuliMotion?.favorite(v.id)}catch(error){toast(error.message);el.disabled=false}
  }
  if(el.dataset.courseSeek!==undefined){
   if(!libraryVideos.some(v=>v.id===el.dataset.courseId))return;
