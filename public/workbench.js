@@ -71,8 +71,12 @@ function syncSidebarState(){
  $('.shell').inert=mobile&&open&&!studentMode&&authorized;
 }
 function setSidebarOpen(open){
- if(sidebarMedia.matches){$('.sidebar').classList.toggle('open',open)}else{sidebarCollapsed=!open;try{localStorage.setItem('axis-sidebar-collapsed',sidebarCollapsed?'1':'0')}catch{}}
- syncSidebarState();$('#menu').focus();
+ const update=()=>{
+  if(sidebarMedia.matches){$('.sidebar').classList.toggle('open',open)}else{sidebarCollapsed=!open;try{localStorage.setItem('axis-sidebar-collapsed',sidebarCollapsed?'1':'0')}catch{}}
+  syncSidebarState();
+ };
+ if(window.PuliMotion)window.PuliMotion.sidebar(update);else update();
+ $('#menu').focus();
 }
 // app.js owns the original menu handler; replace it after account boot.
 queueMicrotask(()=>{
@@ -80,7 +84,7 @@ queueMicrotask(()=>{
  $('#sidebar-shade').onclick=()=>setSidebarOpen(false);
  syncSidebarState();
 });
-sidebarMedia.addEventListener('change',()=>{$('.sidebar').classList.remove('open');syncSidebarState()});
-window.addEventListener('hashchange',()=>{if(sidebarMedia.matches)$('.sidebar').classList.remove('open');queueMicrotask(syncSidebarState)});
+sidebarMedia.addEventListener('change',()=>{window.PuliMotion?.resetSidebar();$('.sidebar').classList.remove('open');syncSidebarState()});
+window.addEventListener('hashchange',()=>{if(studentMode)window.PuliMotion?.resetSidebar();if(sidebarMedia.matches)$('.sidebar').classList.remove('open');queueMicrotask(syncSidebarState)});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&sidebarMedia.matches&&$('.sidebar').classList.contains('open'))setSidebarOpen(false)});
 document.addEventListener('click',e=>{if(sidebarMedia.matches&&e.target.closest('#nav a'))setSidebarOpen(false)});

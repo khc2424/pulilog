@@ -45,3 +45,5 @@
 Motion 14.9.0 mini를 `public/motion-vendor.js`에 로컬 번들로 포함한다. `npm run build:motion`으로 재생성하며 MIT 고지는 `public/motion-LICENSE.txt`에 보관한다. 외부 CDN이나 서버 AI 호출을 사용하지 않는다.
 
 팝업 열기 220ms / 닫기 120ms, 반·학생 기록 접기 200ms, 즐겨찾기 저장 성공 반응 240ms를 적용한다. 팝업 전환 세대와 펼침 상태를 추적해 빠른 반복 입력·교체 시 이전 효과가 새 화면을 지우지 않도록 한다. 닫기를 누르면 영상 추적을 즉시 종료하고 마지막에 원래 버튼으로 포커스를 되돌린다. `prefers-reduced-motion: reduce` 또는 Motion 로드 실패 시 기본 동작으로 돌아간다.
+
+메뉴 토글에도 Motion을 적용한다. 데스크톱은 메뉴 transform·본문 margin-left·상단 여백을 함께 220ms 동안 전환하고, 모바일은 메뉴 슬라이드와 배경 페이드 180ms를 적용한다. 고정 토글 버튼 위치·aria-expanded·inert·접힘 기억은 기존 로직으로 즉시 갱신한다. 연속 클릭은 현재 시각 상태에서 반전하며, 화면 크기 변경이나 학생 화면 전환 때 효과를 정리한다.

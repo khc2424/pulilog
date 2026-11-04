@@ -33,5 +33,29 @@ window.PuliMotion=(()=>{
   event.preventDefault();toggleDetail(detail);
  },true);
  function favorite(id){if(!enabled())return;const star=document.querySelector('[data-favorite="'+CSS.escape(id)+'"]');if(!star)return;try{animate(star,{transform:star.classList.contains('selected')?['scale(1)','scale(1.23)','scale(1)']:['scale(1)','scale(.88)','scale(1)']},{duration:.24}).finished.then(()=>star.style.removeProperty('transform')).catch(()=>{})}catch{}}
- return {open,close,favorite};
+ let sidebarGeneration=0,sidebarAnimations=[];
+ function resetSidebar(){
+  sidebarGeneration++;for(const animation of sidebarAnimations)try{animation.cancel()}catch{}sidebarAnimations=[];
+  const bar=document.querySelector('.sidebar'),shell=document.querySelector('.shell'),shade=document.querySelector('#sidebar-shade'),top=document.querySelector('.topbar');
+  for(const [el,keys] of [[bar,['transform','visibility','transition']],[shell,['margin-left']],[shade,['opacity']],[top,['padding-left']]])if(el)for(const key of keys)el.style.removeProperty(key);
+  shade?.classList.remove('motion-shade');
+ }
+ function sidebar(update){
+  const bar=document.querySelector('.sidebar'),shell=document.querySelector('.shell'),shade=document.querySelector('#sidebar-shade'),top=document.querySelector('.topbar');
+  if(!enabled()||!bar||!shell){resetSidebar();update();return}
+  const before={transform:getComputedStyle(bar).transform,margin:getComputedStyle(shell).marginLeft,padding:top?getComputedStyle(top).paddingLeft:'0px',shade:shade?getComputedStyle(shade).opacity:'0',overlay:document.body.classList.contains('sidebar-overlay')};
+  resetSidebar();bar.style.transition='none';update();
+  const after={transform:getComputedStyle(bar).transform,margin:getComputedStyle(shell).marginLeft,padding:top?getComputedStyle(top).paddingLeft:'0px',overlay:document.body.classList.contains('sidebar-overlay')},generation=sidebarGeneration;
+  bar.style.visibility='visible';
+  const complete=()=>{if(generation===sidebarGeneration)resetSidebar()};
+  try{
+   sidebarAnimations=[animate(bar,{transform:[before.transform,after.transform]},{duration:.22})];
+   if(before.margin!==after.margin)sidebarAnimations.push(animate(shell,{marginLeft:[before.margin,after.margin]},{duration:.22}));
+   if(top&&before.padding!==after.padding)sidebarAnimations.push(animate(top,{paddingLeft:[before.padding,after.padding]},{duration:.22}));
+   if(shade&&(before.overlay||after.overlay)){shade.classList.add('motion-shade');sidebarAnimations.push(animate(shade,{opacity:[before.overlay?before.shade:0,after.overlay?1:0]},{duration:.18}))}
+   Promise.all(sidebarAnimations.map(a=>a.finished)).then(complete,complete);
+  }catch{complete()}
+ }
+ return {open,close,favorite,sidebar,resetSidebar};
+
 })();
