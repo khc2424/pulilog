@@ -44,3 +44,14 @@ test('Supabase 이름 공간 조회는 밑줄 와일드카드가 다른 학생 �
  const {SupabaseStore}=await import('../src/store.mjs');const prefix='youtube_student_activity_2026-10-27_1_',rows=[{key:prefix+'aaa',value:{student_id:1}},{key:'youtube_student_activity_2026-10-27_12_bbb',value:{student_id:12}}];
  const store=new SupabaseStore('https://example.supabase.co','private',async()=>Response.json(rows));assert.deepEqual((await store.settingsPrefix(prefix)).map(r=>r.value.student_id),[1]);
 });
+
+test('일별 시청과 영상 순위는 상세 1000건 제한 전에 집계하며 한국 날짜·학생·반 필터와 0초를 구분한다',async()=>{
+ const store=new LocalStore(':memory:'),activity=new StudentActivity(store,()=>Date.parse('2026-11-04T09:00:00Z'));
+ const visit=(i,seconds,video='Video000001')=>({id:'v'+i,started_at:new Date(Date.parse('2026-11-03T00:00:00Z')+i*1000).toISOString(),last_seen:'2026-11-03T01:00:00Z',closed_at:'2026-11-03T01:00:00Z',end_reason:'closed',active_seconds:seconds,watch:[{video_id:video,title:video==='Video000001'?'함수 복습':'부등식 복습',watched_seconds:seconds,youtube_count:0}]});
+ try{
+  await store.put('settings',{key:'youtube_student_activity_2026-11-03_1_fake',value:{day:'2026-11-03',student_id:1,name:'학생',class_name:'A',visits:Array.from({length:1001},(_,i)=>visit(i,i===0?600:1))}});
+  await store.put('settings',{key:'youtube_student_activity_2026-11-04_1_fake',value:{day:'2026-11-04',student_id:1,name:'학생',class_name:'A',visits:[{...visit(2000,40),started_at:'2026-11-03T15:01:00Z'},{...visit(2001,60,'Video000002'),started_at:'2026-11-03T15:02:00Z'},visit(2002,0,'Video000003')]}});
+  await store.put('settings',{key:'youtube_student_activity_2026-11-04_2_fake',value:{day:'2026-11-04',student_id:2,name:'다른 학생',class_name:'B',visits:[visit(3000,9999)]}});
+  const r=await activity.report({from:'2026-11-02',to:'2026-11-04',student_id:'1',class_name:'A'}),s=r.students[0];assert.equal(r.truncated,true);assert.equal(r.visits.length,1000);assert.equal(s.watched_seconds,1700);assert.deepEqual(s.daily,[{date:'2026-11-02',watched_seconds:0},{date:'2026-11-03',watched_seconds:1600},{date:'2026-11-04',watched_seconds:100}]);assert.deepEqual(s.top_videos.map(v=>[v.video_id,v.watched_seconds]),[['Video000001',1640],['Video000002',60]]);assert.equal((await activity.report({from:'2026-11-04',to:'2026-11-04',class_name:'B'})).students[0].watched_seconds,9999);
+ }finally{store.close()}
+});

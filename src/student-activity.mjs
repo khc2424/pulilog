@@ -46,9 +46,19 @@ export class StudentActivity {
   const dates=[];for(let at=start;at<=end;at+=86400000)dates.push(new Date(at).toISOString().slice(0,10));
   const records=[];for(let i=0;i<dates.length;i+=5){const groups=await Promise.all(dates.slice(i,i+5).map(date=>this.store.settingsPrefix(prefix+date+'_'+(student_id?student_id+'_':''))));records.push(...groups.flat())}
   const visits=[];
-  for(const {value:row} of records){if(student_id&&String(row.student_id)!==String(student_id))continue;if(class_name&&row.class_name!==class_name)continue;for(const v of row.visits){const expired=!v.closed_at&&this.now()-Date.parse(v.last_seen)>90000;visits.push({id:v.id,student_id:row.student_id,name:row.name,class_name:row.class_name,started_at:v.started_at,last_seen:v.last_seen,closed_at:v.closed_at||(expired?v.last_seen:null),end_reason:v.end_reason||(expired?'timeout':null),active_seconds:Math.floor(v.active_seconds),watch:v.watch.map(w=>({...w,watched_seconds:Math.floor(w.watched_seconds)}))})}}
+  for(const {value:row} of records){if(student_id&&String(row.student_id)!==String(student_id))continue;if(class_name&&row.class_name!==class_name)continue;for(const v of row.visits){const expired=!v.closed_at&&this.now()-Date.parse(v.last_seen)>90000;visits.push({id:v.id,day:row.day,student_id:row.student_id,name:row.name,class_name:row.class_name,started_at:v.started_at,last_seen:v.last_seen,closed_at:v.closed_at||(expired?v.last_seen:null),end_reason:v.end_reason||(expired?'timeout':null),active_seconds:Math.floor(v.active_seconds),watch:v.watch.map(w=>({...w,watched_seconds:Math.floor(w.watched_seconds)}))})}}
   visits.sort((a,b)=>b.started_at.localeCompare(a.started_at));
-  const students=new Map();for(const v of visits){const s=students.get(v.student_id)||{student_id:v.student_id,name:v.name,class_name:v.class_name,visits:0,watched_seconds:0,youtube_count:0};s.visits++;s.watched_seconds+=v.watch.reduce((n,w)=>n+w.watched_seconds,0);s.youtube_count+=v.watch.reduce((n,w)=>n+w.youtube_count,0);students.set(v.student_id,s)}
+  const students=new Map(),videoTotals=new Map();
+  for(const v of visits){
+   const s=students.get(v.student_id)||{student_id:v.student_id,name:v.name,class_name:v.class_name,visits:0,watched_seconds:0,youtube_count:0,daily:dates.map(date=>({date,watched_seconds:0}))};
+   const seconds=v.watch.reduce((n,w)=>n+w.watched_seconds,0);s.visits++;s.watched_seconds+=seconds;s.youtube_count+=v.watch.reduce((n,w)=>n+w.youtube_count,0);
+   const bucket=s.daily.find(d=>d.date===v.day);if(bucket)bucket.watched_seconds+=seconds;
+   const videos=videoTotals.get(v.student_id)||new Map();
+   for(const w of v.watch){const item=videos.get(w.video_id)||{video_id:w.video_id,title:w.title,watched_seconds:0,youtube_count:0};item.watched_seconds+=w.watched_seconds;item.youtube_count+=w.youtube_count;videos.set(w.video_id,item)}
+   videoTotals.set(v.student_id,videos);students.set(v.student_id,s);
+  }
+  for(const s of students.values())s.top_videos=[...videoTotals.get(s.student_id).values()].filter(v=>v.watched_seconds>0).sort((a,b)=>b.watched_seconds-a.watched_seconds||a.video_id.localeCompare(b.video_id)).slice(0,5);
+
   return {from,to,total_visits:visits.length,students:[...students.values()],visits:visits.slice(0,1000),truncated:visits.length>1000};
  }
 }
