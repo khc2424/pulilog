@@ -3,6 +3,20 @@ import assert from 'node:assert/strict';
 import {classKey,canonicalClassName,mergeClassAliases,titleClassAlias} from '../src/classes.mjs';
 import {LocalStore} from '../src/store.mjs';
 import {classifyYouTubeTitle} from '../src/youtube.mjs';
+import {readFile} from 'node:fs/promises';
+import {runInNewContext} from 'node:vm';
+
+test('기하 기말특강 회차 제목은 등록된 특강 반과 기하 단원으로 분류한다',async()=>{
+ const source=await readFile(new URL('../public/accounts.js',import.meta.url),'utf8');
+ const browser={};runInNewContext(source.slice(source.indexOf('function parseCourseTitle('),source.indexOf('function manageCourse(')),browser);
+ for(const title of ['기하 기말특강 1회차 / 공간좌표','기하기말특강 12회차/공간도형']){
+  const unit=title.includes('공간좌표')?'공간좌표':'공간도형';
+  assert.deepEqual(classifyYouTubeTitle(title,['기하기말특강']),{classes:['기하기말특강'],class_name:'기하기말특강',book:'',subject:'기하',unit});
+  assert.deepEqual(JSON.parse(JSON.stringify(browser.parseCourseTitle(title))),{class_name:'기하기말특강',book:'',subject:'기하',unit});
+ }
+ assert.equal(classifyYouTubeTitle('기하 기말특강 1회차 / 공간좌표',[]).class_name,'');
+ assert.equal(classifyYouTubeTitle('기하 여름특강 1회차 / 공간좌표',['기하기말특강']).class_name,'');
+});
 
 test('반 이름은 띄어쓰기·대소문자를 무시하고 기존 이름을 재사용한다',()=>{
  assert.equal(classKey(' 중3 d4 '),'중3D4');

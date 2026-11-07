@@ -18,6 +18,9 @@ export const isYouTubeVideoReady=item=>item.status?.uploadStatus==='processed'&&
 export const youtubeYear=value=>{const time=Date.parse(value);return Number.isFinite(time)?new Date(time+9*3600000).getUTCFullYear():null};
 
 export function classifyYouTubeTitle(title,classes){
+ const special=String(title).trim().match(/^기하\s*기말\s*특강\s*\d+\s*회차\s*\/\s*(.+)$/u);
+ const specialClass=canonicalClassName('기하기말특강',classes);
+ if(special&&classes.includes(specialClass))return {classes:[specialClass],class_name:specialClass,book:'',subject:'기하',unit:special[1].trim()};
  const compact=classKey;
  let group='',rest=title;
  const alias=titleClassAlias(title,classes);if(alias){group=alias.name;rest=alias.rest}

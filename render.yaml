@@ -2,7 +2,7 @@ services:
   - type: web
     name: pulilog
     runtime: node
-    plan: free
+    plan: starter
     buildCommand: npm ci && npm run check && npm test
     startCommand: npm start
     healthCheckPath: /healthz

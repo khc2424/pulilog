@@ -98,6 +98,8 @@ function manageStudent(id=null,group=''){
  $('#managed-student-form').onsubmit=async e=>{e.preventDefault();try{await requestAPI('/api/teacher/student',{id,name:$('#managed-name').value,phone:$('#managed-phone').value,class_name:$('#managed-class').value,active:$('#managed-active').checked});await refreshTeacher();closeModal();render();toast('학생 정보를 저장했어요.')}catch(error){$('#managed-error').textContent=error.message}};
 }
 function parseCourseTitle(raw){
+ const special=raw.trim().match(/^기하\s*기말\s*특강\s*\d+\s*회차\s*\/\s*(.+)$/u);
+ if(special)return {class_name:'기하기말특강',book:'',subject:'기하',unit:special[1].trim()};
  const title=raw.trim();const alias=title.match(/NK\s*약술형\s*논술/i);
  if(alias){const rest=title.slice(alias.index+alias[0].length).replace(/^[\s\]:·-]+/,'');const parts=rest.match(/^(?:(.+?)\s+)?(공통수학\s*[12]|대수|미적분\s*[12]?|확률과\s*통계|기하|수학\s*[ⅠⅡ12])\s*(.*)$/i);return {class_name:'약논반',book:parts?.[1]?.trim()||'',subject:parts?.[2]?.replace(/\s/g,'')||'',unit:(parts?.[3]||'').replace(/^\[[^\]]+\]\s*/,'').replace(/\s*#\s*\d+\s*$/,'').trim()}}
  const m=title.match(/^(고\d|중\d|초\d)\s*([A-Za-z]\d+)\s+(.+?)\s+(공통수학\s*[12]|대수|미적분\s*[12]?|확률과\s*통계|기하|수학\s*[ⅠⅡ12])\s*(.*)$/i);
