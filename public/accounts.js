@@ -116,18 +116,29 @@ function manageCourse(id=null){
 
 async function openCourse(id,startSeconds=null){
  const generation=++courseOpenGeneration;
- try{await refreshStudent()}catch(error){toast(error.message);return}
- if(!signedStudent){render();toast('다시 로그인해주세요.');return}
- const v=libraryVideos.find(v=>v.id===id);if(!v){toast('이 반에서 볼 수 없는 영상이에요.');return}
- const rows=v.timeline;let resume=null;
- if(startSeconds===null){try{resume=(await requestAPI('/api/student/resume?id='+encodeURIComponent(id))).resume}catch{}}
- if(generation!==courseOpenGeneration)return;
+ const loadingId='lesson-loading-'+generation;
+ openModal(`<h2 id="modal-title">강의 열기</h2><p id="${loadingId}" role="status">영상을 불러오는 중이에요…</p>`);
+ const stillLoading=()=>generation===courseOpenGeneration&&!$('#modal').hidden&&document.getElementById(loadingId);
+ try{await refreshStudent()}catch(error){const status=stillLoading();if(status)status.textContent=error.message;return}
+ const status=stillLoading();
+ if(!status)return;
+ if(!signedStudent){closeModal();render();toast('다시 로그인해주세요.');return}
+ const v=libraryVideos.find(v=>v.id===id);if(!v){status.textContent='이 반에서 볼 수 없는 영상이에요.';return}
+ const rows=v.timeline;
  const initial=Number.isInteger(startSeconds)&&startSeconds>=0?startSeconds:0;
- openModal(`<div class="lesson-modal-layout"><div class="lesson-main"><header class="lesson-header"><h2 id="modal-title">${esc(v.title)}</h2><p class="subtitle">${esc(v.book)} · ${esc(v.subject)} · ${esc(v.unit)}</p></header><div class="lesson-video-stage"><iframe id="lesson-player" class="embedded-video" src="https://www.youtube.com/embed/${esc(v.id)}?start=${initial}&enablejsapi=1&playsinline=1&origin=${encodeURIComponent(location.origin)}" title="${esc(v.title)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe><p id="playing-position" class="playing-position" role="status">${initial?playbackClock(initial)+'부터 재생':'전체 강의'}</p></div><div class="lesson-original">${resume&&!resume.ended&&resume.position_seconds>=10?`<button class="btn primary" id="resume-lesson" data-course-seek="${resume.position_seconds}" data-course-id="${esc(v.id)}" data-course-title="이어서 보기">${playbackClock(resume.position_seconds)} 이어보기</button>`:''}<button class="btn" id="lesson-question">이 부분 모르겠어요</button><a id="original-video-link" class="btn" href="https://www.youtube.com/watch?v=${esc(v.id)}" target="_blank" rel="noopener noreferrer">유튜브에서 열기 ↗</a></div><div id="lesson-question-form" hidden></div></div><section class="video-timeline lesson-timeline" aria-label="강의 타임라인"><div class="timeline-heading"><h3>강의 타임라인</h3><span>${rows.length}개</span></div><p class="timeline-help">문제·캡쳐구간이나 시간을 누르면 해당 지점부터 재생돼요.</p><div class="lesson-timeline-scroll" tabindex="0" role="region" aria-label="강의 타임라인 목록">${rows.length?rows.map(([n,p,t,label,sec])=>`<button class="timeline-row ${/^(잡담|캡쳐구간)\d+$/.test(n)?'timeline-marked':''}" data-course-seek="${sec}" data-course-id="${esc(v.id)}" data-course-title="${esc(timelineDescription([n,p,t]))}"><span class="timeline-topic">${esc(timelineDescription([n,p,t]))}</span><span class="timeline-time">${esc(label)} ▷</span></button>`).join(''):'<div class="empty-state">아직 등록된 타임라인이 없어요. 전체 강의를 먼저 볼 수 있어요.</div>'}</div></section></div>`,'lesson');
+ openModal(`<div class="lesson-modal-layout"><div class="lesson-main"><header class="lesson-header"><h2 id="modal-title">${esc(v.title)}</h2><p class="subtitle">${esc(v.book)} · ${esc(v.subject)} · ${esc(v.unit)}</p></header><div class="lesson-video-stage"><iframe id="lesson-player" class="embedded-video" src="https://www.youtube.com/embed/${esc(v.id)}?start=${initial}&enablejsapi=1&playsinline=1&origin=${encodeURIComponent(location.origin)}" title="${esc(v.title)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe><p id="playing-position" class="playing-position" role="status">${initial?playbackClock(initial)+'부터 재생':'전체 강의'}</p></div><div class="lesson-original"><button class="btn" id="lesson-question">이 부분 모르겠어요</button><a id="original-video-link" class="btn" href="https://www.youtube.com/watch?v=${esc(v.id)}" target="_blank" rel="noopener noreferrer">유튜브에서 열기 ↗</a></div><div id="lesson-question-form" hidden></div></div><section class="video-timeline lesson-timeline" aria-label="강의 타임라인"><div class="timeline-heading"><h3>강의 타임라인</h3><span>${rows.length}개</span></div><p class="timeline-help">문제·캡쳐구간이나 시간을 누르면 해당 지점부터 재생돼요.</p><div class="lesson-timeline-scroll" tabindex="0" role="region" aria-label="강의 타임라인 목록">${rows.length?rows.map(([n,p,t,label,sec])=>`<button class="timeline-row ${/^(잡담|캡쳐구간)\d+$/.test(n)?'timeline-marked':''}" data-course-seek="${sec}" data-course-id="${esc(v.id)}" data-course-title="${esc(timelineDescription([n,p,t]))}"><span class="timeline-topic">${esc(timelineDescription([n,p,t]))}</span><span class="timeline-time">${esc(label)} ▷</span></button>`).join(''):'<div class="empty-state">아직 등록된 타임라인이 없어요. 전체 강의를 먼저 볼 수 있어요.</div>'}</div></section></div>`,'lesson');
  if(typeof startLessonTracking==='function')startLessonTracking(v.id);
  if($('#lesson-question'))$('#lesson-question').onclick=()=>openStudentQuestion(v.id);
  if(initial)$('#original-video-link').href=`https://www.youtube.com/watch?v=${v.id}&t=${initial}s`;
  if(typeof recordYouTubeOpen==='function'&&$('#original-video-link'))$('#original-video-link').onclick=()=>recordYouTubeOpen(v.id);
+ if(startSeconds===null){
+  const player=$('#lesson-player');
+  try{
+   const {resume}=await requestAPI('/api/student/resume?id='+encodeURIComponent(id));
+   if(generation!==courseOpenGeneration||$('#modal').hidden||$('#lesson-player')!==player||!resume||resume.ended||!Number.isInteger(resume.position_seconds)||resume.position_seconds<10)return;
+   $('#lesson-question').insertAdjacentHTML('beforebegin',`<button type="button" class="btn primary" id="resume-lesson" data-course-seek="${resume.position_seconds}" data-course-id="${esc(v.id)}" data-course-title="이어서 보기">${playbackClock(resume.position_seconds)} 이어보기</button>`);
+  }catch{}
+ }
 }
 
 document.addEventListener('click',async e=>{
