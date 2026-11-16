@@ -29,6 +29,24 @@ test('예약 설정문은 Vault 인증과 고정 작업명을 사용하고 인�
  }finally{store.close()}
 });
 
+test('Google 재승인 후에는 최근 예약 실패가 있어도 기존 수집 범위에서 즉시 재시도한다',async()=>{
+ const store=new LocalStore(':memory:');
+ const since='2026-10-01T00:00:00Z',checked=new Date().toISOString();
+ const calls=[];
+ const auto=new YouTubeAutoImport({},store,{async sync(options){calls.push(options);return {imported:2}}});
+ try{
+  await auto.save({enabled:true,year:2026,import_since:since,last_checked:checked,error:'Google 연결 승인을 다시 진행해주세요.'});
+  assert.deepEqual(await auto.importVideos(await auto.read()),{skipped:'recent'});
+  assert.deepEqual(await auto.resumeAfterAuthorization(),{imported:2});
+  assert.deepEqual(calls,[{year:2026,newOnly:true,since}]);
+  const status=await auto.status();
+  assert.equal(status.last_imported,2);
+  assert.equal(status.error,'');
+  await auto.toggle(false);
+  assert.deepEqual(await auto.resumeAfterAuthorization(),{skipped:'paused'});
+ }finally{store.close()}
+});
+
 test('예약 요청은 새 영상만 가져오고 삭제·숨김·연도 조건과 학생 반을 유지한다',async()=>{
  const store=new LocalStore(':memory:'),cfg={origin:'http://127.0.0.1',production:false,sessionSecret:'test',adminCode:'2424',driver:'sqlite',googleClientId:'id',googleClientSecret:'secret'};
  let metadataCalls=0,fail=false;

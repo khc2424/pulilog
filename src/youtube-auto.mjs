@@ -53,9 +53,15 @@ commit;`;
  async run(authorization){
   const state=await this.read(),token=String(authorization||'').replace(/^Bearer /,'');
   if(!state?.token_hash||!timingSafeEqual(Buffer.from(hash(token)),Buffer.from(state.token_hash)))invalid('예약 실행 인증을 확인해주세요.',401);
-  if(!state.enabled)return {skipped:'paused'};
+  return this.importVideos(state);
+ }
+ async resumeAfterAuthorization(){
+  return this.importVideos(await this.read(),{afterAuthorization:true});
+ }
+ async importVideos(state,{afterAuthorization=false}={}){
+  if(!state?.enabled)return {skipped:'paused'};
   if(this.busy||this.youtube.busy)return {skipped:'busy'};
-  if(state.last_checked&&Date.now()-Date.parse(state.last_checked)<8*60*1000)return {skipped:'recent'};
+  if(!afterAuthorization&&state.last_checked&&Date.now()-Date.parse(state.last_checked)<8*60*1000)return {skipped:'recent'};
   this.busy=true;
   const checked=new Date().toISOString();
   // Preserve the baseline across runs so videos still processing are retried later.

@@ -84,6 +84,9 @@ export function createApp(cfg,store,options={}){
    if(req.method==='GET'&&path==='/api/youtube/callback'){
     const state=(req.headers.cookie||'').split(';').map(s=>s.trim()).find(s=>s.startsWith('pl_youtube_state='))?.slice(17)||'';
     let outcome='connected';try{await youtube.finish(url.searchParams,state)}catch{outcome='failed'}
+    if(outcome==='connected'){
+     try{await youtubeAuto.resumeAfterAuthorization()}catch{/* The import error is recorded in the automatic import status. */}
+    }
     res.writeHead(303,{Location:cfg.origin+'/?youtube='+outcome+'#settings','Set-Cookie':oauthCookie('',true)});return res.end();
    }
    if(req.method==='GET'&&path==='/healthz'){await store.all('settings',{key:'schema_version'});return send(res,200,{ok:true})}
